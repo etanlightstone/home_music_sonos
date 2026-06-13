@@ -15,6 +15,17 @@ document.addEventListener('DOMContentLoaded', () => {
             portInput.value = e.target.value === 'sftp' ? '22' : '21';
         }
     });
+
+    // Index management
+    document.getElementById('reindex-btn')?.addEventListener('click', startIndexing);
+    document.getElementById('interrupt-settings-btn')?.addEventListener('click', interruptIndexing);
+    document.getElementById('banner-interrupt-btn')?.addEventListener('click', interruptIndexing);
+
+    // Check index status on load
+    fetch('/api/index/status').then(r => r.json()).then(status => {
+        updateIndexUI(status);
+        if (status.is_running) startIndexPoll();
+    }).catch(() => {});
 });
 
 /* ── Tab switching ─────────────────────────────────────────── */
@@ -76,4 +87,79 @@ function showToast(msg, type = 'success') {
     toast.textContent = msg;
     container.appendChild(toast);
     setTimeout(() => toast.remove(), 3000);
+}
+
+/* ── Index management ─────────────────────────────────────── */
+
+let indexPollTimer = null;
+
+async function startIndexing() {
+    const res = await fetch('/api/index/start', { method: 'POST' });
+    const data = await res.json();
+    if (data.status === 'started' || data.status === 'already_running') {
+        startIndexPoll();
+    } else {
+        showToast('Failed to start indexing', 'error');
+    }
+}
+
+async function interruptIndexing() {
+    await fetch('/api/index/interrupt', { method: 'POST' });
+    stopIndexPoll();
+    updateIndexUI({ is_running: false, was_interrupted: true, processed_entries: 0, completed_at: null });
+    showToast('Indexing interrupted', 'error');
+}
+
+function startIndexPoll() {
+    if (indexPollTimer) clearInterval(indexPollTimer);
+    pollIndexStatus();  // immediate
+    indexPollTimer = setInterval(pollIndexStatus, 2000);
+}
+
+function stopIndexPoll() {
+    if (indexPollTimer) { clearInterval(indexPollTimer); indexPollTimer = null; }
+}
+
+async function pollIndexStatus() {
+    try {
+        const res = await fetch('/api/index/status');
+        const status = await res.json();
+        updateIndexUI(status);
+        if (!status.is_running) {
+            stopIndexPoll();
+            if (status.completed_at && window.loadBrowser) {
+                loadBrowser('/');  // refresh browser (Phase 3 will define this)
+            }
+        }
+    } catch (err) {
+        console.error('Index poll error:', err);
+        stopIndexPoll();
+    }
+}
+
+function updateIndexUI(status) {
+    const isRunning = status.is_running;
+    const count     = status.processed_entries ?? 0;
+    const lastTime  = status.completed_at
+        ? new Date(status.completed_at).toLocaleString()
+        : 'Never';
+
+    // Browser tab banner
+    document.getElementById('indexing-banner')?.classList.toggle('hidden', !isRunning);
+    const bannerCount = document.getElementById('banner-count');
+    if (bannerCount) bannerCount.textContent = count;
+
+    // Settings tab progress
+    document.getElementById('settings-index-progress')?.classList.toggle('hidden', !isRunning);
+    const settingsCount = document.getElementById('settings-index-count');
+    if (settingsCount) settingsCount.textContent = count;
+
+    // Last indexed text
+    const lastEl = document.getElementById('last-indexed');
+    if (lastEl) lastEl.textContent = isRunning ? 'In progress...' : lastTime;
+
+    // Interrupt buttons
+    document.getElementById('banner-interrupt-btn')?.classList.toggle('hidden', !isRunning);
+    document.getElementById('interrupt-settings-btn')?.classList.toggle('hidden', !isRunning);
+    document.getElementById('reindex-btn')?.classList.toggle('hidden', isRunning);
 }
