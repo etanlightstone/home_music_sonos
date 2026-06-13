@@ -1,0 +1,136 @@
+"""
+Sonos controller using soco.
+All public functions are synchronous — wrap in asyncio.run_in_executor
+when calling from async FastAPI route handlers.
+"""
+
+import time
+from typing import Optional
+
+try:
+    import soco
+    from soco.core import SoCo
+    from soco.exceptions import SoCoException
+except ImportError:
+    raise ImportError("soco is not installed. Run: pip install soco")
+
+
+def _player(ip: str) -> SoCo:
+    return SoCo(ip)
+
+
+# ── Single-file playback ─────────────────────────────────────
+
+def play_uri(sonos_ip: str, uri: str, title: str = "") -> dict:
+    """
+    Play a single audio URI on the Sonos speaker.
+    uri must be an http:// URL reachable from the Sonos device.
+    """
+    player = _player(sonos_ip)
+    try:
+        player.play_uri(uri)
+        return {"status": "playing", "uri": uri, "title": title}
+    except SoCoException as e:
+        # Some Sonos devices need a stop before a new URI is accepted
+        try:
+            player.stop()
+            time.sleep(0.3)
+            player.play_uri(uri)
+            return {"status": "playing", "uri": uri, "title": title}
+        except Exception as e2:
+            return {"status": "error", "message": str(e2)}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+# ── Folder / queue playback ──────────────────────────────────
+
+def play_queue(sonos_ip: str, uris: list, titles: list = None) -> dict:
+    """
+    Clear the Sonos queue, load all URIs, and start playing from track 1.
+    uris: list of http:// URLs in play order.
+    titles: optional list of display titles (same length as uris).
+    """
+    if not uris:
+        return {"status": "error", "message": "No URIs provided"}
+
+    player = _player(sonos_ip)
+    try:
+        player.clear_queue()
+        for i, uri in enumerate(uris):
+            title = (titles[i] if titles and i < len(titles) else f"Track {i+1}")
+            player.add_uri_to_queue(uri)
+        player.play_from_queue(0)
+        return {
+            "status": "playing_queue",
+            "track_count": len(uris),
+            "first_title": titles[0] if titles else uris[0].split('/')[-1],
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+# ── Transport controls ───────────────────────────────────────
+
+def pause(sonos_ip: str) -> dict:
+    player = _player(sonos_ip)
+    try:
+        player.pause()
+        return {"status": "paused"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+def resume(sonos_ip: str) -> dict:
+    player = _player(sonos_ip)
+    try:
+        player.play()
+        return {"status": "playing"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+def next_track(sonos_ip: str) -> dict:
+    player = _player(sonos_ip)
+    try:
+        player.next()
+        return {"status": "next"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+def prev_track(sonos_ip: str) -> dict:
+    player = _player(sonos_ip)
+    try:
+        player.previous()
+        return {"status": "previous"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+# ── State query ──────────────────────────────────────────────
+
+def get_state(sonos_ip: str) -> dict:
+    """
+    Returns current transport state and track info.
+    Useful for syncing the UI to what Sonos is actually playing.
+    """
+    player = _player(sonos_ip)
+    try:
+        transport = player.get_current_transport_info()
+        track     = player.get_current_track_info()
+        return {
+            "state":    transport.get("current_transport_state", "UNKNOWN"),
+            "title":    track.get("title", ""),
+            "artist":   track.get("artist", ""),
+            "album":    track.get("album", ""),
+            "position": track.get("position", ""),
+            "duration": track.get("duration", ""),
+            "uri":      track.get("uri", ""),
+        }
+    except Exception as e:
+        return {
+            "state": "UNKNOWN",
+            "title": "",
+            "error": str(e),
+        }

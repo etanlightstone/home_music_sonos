@@ -9,6 +9,7 @@ from routers import settings as settings_router
 from routers import index_router
 from routers import proxy
 from routers import files as files_router
+from routers import sonos as sonos_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -27,6 +28,7 @@ app.include_router(settings_router.router, prefix="/api/settings",  tags=["setti
 app.include_router(index_router.router,    prefix="/api/index",      tags=["index"])
 app.include_router(proxy.router,           prefix="/api/proxy",      tags=["proxy"])
 app.include_router(files_router.router,    prefix="/api/files",      tags=["files"])
+app.include_router(sonos_router.router,    prefix="/api/sonos",      tags=["sonos"])
 
 @app.get("/")
 async def index(request: Request):

@@ -470,3 +470,259 @@ function formatDate(isoStr) {
 
 // Expose loadBrowser globally so Phase 2's pollIndexStatus can call it
 window.loadBrowser = loadBrowser;
+
+/* ============================================================
+   Phase 4 — Playback engine (Sonos + in-browser)
+   ============================================================ */
+
+// ── Shared playback state ────────────────────────────────────
+const playback = {
+    mode:          null,
+    currentTitle:  '',
+    isPlaying:     false,
+    isPaused:      false,
+    browserPlaylist: [],
+    browserIndex:    -1,
+    sonosPoller: null,
+};
+
+// ── DOM refs ─────────────────────────────────────────────────
+const audioEl       = document.getElementById('audio-player');
+const playbar       = document.getElementById('playbar');
+const btnPrev       = document.getElementById('btn-prev');
+const btnPlayPause  = document.getElementById('btn-playpause');
+const btnNext       = document.getElementById('btn-next');
+const nowLabel      = document.getElementById('now-playing-label');
+const nowMode       = document.getElementById('now-playing-mode');
+const mainContent   = document.querySelector('.main-content');
+
+// ── Initialise controls bar ──────────────────────────────────
+document.addEventListener('DOMContentLoaded', initPlaybackControls);
+
+function initPlaybackControls() {
+    btnPrev?.addEventListener('click',      onPrev);
+    btnPlayPause?.addEventListener('click', onPlayPause);
+    btnNext?.addEventListener('click',      onNext);
+
+    if (audioEl) {
+        audioEl.addEventListener('ended',   onBrowserTrackEnded);
+        audioEl.addEventListener('play',    () => setPlayPauseBtn(true));
+        audioEl.addEventListener('pause',   () => setPlayPauseBtn(false));
+        audioEl.addEventListener('error',   (e) => console.error('[Audio]', e));
+    }
+}
+
+// ── Show/hide playbar ────────────────────────────────────────
+function showPlaybar() {
+    playbar?.classList.remove('hidden');
+    mainContent?.classList.add('playbar-visible');
+}
+
+function updateNowPlaying(title, mode) {
+    playback.currentTitle = title;
+    playback.mode = mode;
+    showPlaybar();
+    if (nowLabel) nowLabel.textContent = title || 'Playing…';
+    if (nowMode) {
+        nowMode.textContent   = mode === 'sonos' ? 'Sonos' : 'Browser';
+        nowMode.className     = `mode-badge ${mode}`;
+    }
+}
+
+function setPlayPauseBtn(isPlaying) {
+    playback.isPlaying = isPlaying;
+    if (btnPlayPause) btnPlayPause.textContent = isPlaying ? '⏸' : '▶';
+}
+
+// ── Controls bar button handlers ────────────────────────────
+
+function onPlayPause() {
+    if (playback.mode === 'browser') {
+        if (!audioEl) return;
+        if (audioEl.paused) {
+            audioEl.play();
+        } else {
+            audioEl.pause();
+        }
+    } else if (playback.mode === 'sonos') {
+        if (playback.isPaused) {
+            fetch('/api/sonos/resume', { method: 'POST' }).then(() => {
+                playback.isPaused = false;
+                setPlayPauseBtn(true);
+            });
+        } else {
+            fetch('/api/sonos/pause', { method: 'POST' }).then(() => {
+                playback.isPaused = true;
+                setPlayPauseBtn(false);
+            });
+        }
+    }
+}
+
+function onNext() {
+    if (playback.mode === 'browser') {
+        advanceBrowserPlaylist(1);
+    } else if (playback.mode === 'sonos') {
+        fetch('/api/sonos/next', { method: 'POST' })
+            .then(r => r.json())
+            .then(() => setTimeout(syncSonosState, 500));
+    }
+}
+
+function onPrev() {
+    if (playback.mode === 'browser') {
+        advanceBrowserPlaylist(-1);
+    } else if (playback.mode === 'sonos') {
+        fetch('/api/sonos/previous', { method: 'POST' })
+            .then(r => r.json())
+            .then(() => setTimeout(syncSonosState, 500));
+    }
+}
+
+// ── IN-BROWSER PLAYBACK ──────────────────────────────────────
+
+window.playInBrowser = function(relPath, name) {
+    const proxyUrl = proxyUrlFromPath(relPath);
+    playback.browserPlaylist = [{ path: relPath, name, proxyUrl }];
+    playback.browserIndex    = 0;
+    _startBrowserTrack(0);
+};
+
+window.playFolderInBrowser = async function(folderPath, folderName) {
+    try {
+        const res  = await fetch(`/api/files/folder-files?path=${encodeURIComponent(folderPath)}`);
+        const data = await res.json();
+        const files = data.files || [];
+        if (!files.length) { showToast('No music files found in folder', 'error'); return; }
+        playback.browserPlaylist = files.map(f => ({
+            path:     f.path,
+            name:     f.name,
+            proxyUrl: proxyUrlFromPath(f.path),
+        }));
+        playback.browserIndex = 0;
+        _startBrowserTrack(0);
+        showToast(`Playing ${files.length} tracks from "${folderName || folderPath}"`, 'success');
+    } catch (err) {
+        showToast('Failed to load folder: ' + err.message, 'error');
+    }
+};
+
+function _startBrowserTrack(index) {
+    if (!audioEl) return;
+    const track = playback.browserPlaylist[index];
+    if (!track) return;
+    playback.browserIndex = index;
+    audioEl.src = track.proxyUrl;
+    audioEl.play().catch(err => console.error('[Audio] play error:', err));
+    updateNowPlaying(track.name, 'browser');
+    stopSonosPoller();
+}
+
+function onBrowserTrackEnded() {
+    const nextIdx = playback.browserIndex + 1;
+    if (nextIdx < playback.browserPlaylist.length) {
+        _startBrowserTrack(nextIdx);
+    } else {
+        setPlayPauseBtn(false);
+        if (nowLabel) nowLabel.textContent = 'Playback finished';
+    }
+}
+
+function advanceBrowserPlaylist(delta) {
+    const nextIdx = playback.browserIndex + delta;
+    if (nextIdx >= 0 && nextIdx < playback.browserPlaylist.length) {
+        _startBrowserTrack(nextIdx);
+    }
+}
+
+// ── SONOS PLAYBACK ───────────────────────────────────────────
+
+window.playOnSonos = async function(relPath, name) {
+    try {
+        const res  = await fetch('/api/sonos/play-file', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: relPath, name }),
+        });
+        const data = await res.json();
+        if (data.status === 'error') {
+            showToast('Sonos error: ' + data.message, 'error');
+            return;
+        }
+        if (audioEl) { audioEl.pause(); audioEl.src = ''; }
+        playback.isPaused = false;
+        updateNowPlaying(name || relPath.split('/').pop(), 'sonos');
+        setPlayPauseBtn(true);
+        startSonosPoller();
+        showToast(`Playing on Sonos: ${name}`, 'success');
+    } catch (err) {
+        showToast('Sonos play failed: ' + err.message, 'error');
+    }
+};
+
+window.playFolderOnSonos = async function(folderPath, folderName) {
+    showToast(`Loading "${folderName || folderPath}" into Sonos queue…`, 'success');
+    try {
+        const res  = await fetch('/api/sonos/play-folder', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: folderPath }),
+        });
+        const data = await res.json();
+        if (data.status === 'error') {
+            showToast('Sonos error: ' + data.message, 'error');
+            return;
+        }
+        if (audioEl) { audioEl.pause(); audioEl.src = ''; }
+        playback.isPaused = false;
+        const firstTitle = data.first_title || folderName;
+        updateNowPlaying(firstTitle, 'sonos');
+        setPlayPauseBtn(true);
+        startSonosPoller();
+        showToast(`${data.track_count} tracks queued on Sonos`, 'success');
+    } catch (err) {
+        showToast('Sonos folder play failed: ' + err.message, 'error');
+    }
+};
+
+// ── Sonos state polling ──────────────────────────────────────
+
+function startSonosPoller() {
+    stopSonosPoller();
+    playback.sonosPoller = setInterval(syncSonosState, 3000);
+}
+
+function stopSonosPoller() {
+    if (playback.sonosPoller) {
+        clearInterval(playback.sonosPoller);
+        playback.sonosPoller = null;
+    }
+}
+
+async function syncSonosState() {
+    if (playback.mode !== 'sonos') { stopSonosPoller(); return; }
+    try {
+        const res  = await fetch('/api/sonos/state');
+        const data = await res.json();
+        const state    = data.state || 'UNKNOWN';
+        const title    = data.title || playback.currentTitle;
+        const isPlaying = state === 'PLAYING';
+        const isStopped = state === 'STOPPED' || state === 'NO_MEDIA_PRESENT';
+
+        if (title && title !== playback.currentTitle) {
+            updateNowPlaying(title, 'sonos');
+        }
+        playback.isPaused = (state === 'PAUSED_PLAYBACK');
+        setPlayPauseBtn(isPlaying);
+
+        if (isStopped) stopSonosPoller();
+    } catch (err) {
+        // Network error — keep polling, Sonos may be momentarily busy
+    }
+}
+
+// ── Helper: build proxy URL from relative file path ──────────
+function proxyUrlFromPath(relPath) {
+    const clean = relPath.replace(/^\/+/, '');
+    return `/api/proxy/${clean}`;
+}
