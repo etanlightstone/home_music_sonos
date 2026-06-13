@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SonosWeb</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+  <!-- Fixed top nav -->
+  <nav class="topnav">
+    <span class="app-title">🎵 SonosWeb</span>
+    <div class="tab-links">
+      <a href="#" class="tab-link active" data-tab="browser">Browser</a>
+      <a href="#" class="tab-link" data-tab="settings">Settings</a>
+    </div>
+  </nav>
+
+  <!-- Playback controls bar (hidden until playback starts) -->
+  <div id="playbar" class="playbar hidden">
+    <div class="playbar-controls">
+      <button id="btn-prev" class="ctrl-btn" title="Previous">⏮</button>
+      <button id="btn-playpause" class="ctrl-btn" title="Pause/Resume">⏸</button>
+      <button id="btn-next" class="ctrl-btn" title="Next">⏭</button>
+    </div>
+    <div class="playbar-info">
+      <span id="now-playing-label" class="now-playing-label">Nothing playing</span>
+      <span id="now-playing-mode" class="mode-badge"></span>
+    </div>
+    <audio id="audio-player" hidden></audio>
+  </div>
+
+  <!-- Main content area -->
+  <main class="main-content">
+
+    <!-- BROWSER TAB -->
+    <div id="tab-browser" class="tab-content active">
+
+      <!-- Indexing in-progress banner (hidden by default) -->
+      <div id="indexing-banner" class="indexing-banner hidden">
+        <span class="spinner"></span>
+        Indexing in progress: <strong id="banner-count">0</strong> entries found…
+        <button id="banner-interrupt-btn" class="btn-danger btn-sm">Interrupt</button>
+      </div>
+
+      <!-- Search bar area (Phase 3 will populate this) -->
+      <div id="search-bar-area" class="search-bar-area">
+        <input type="text" id="search-input" class="search-input" placeholder="Search files and folders…" autocomplete="off">
+        <div class="search-filters">
+          <label><input type="radio" name="search-type" value="all" checked> All</label>
+          <label><input type="radio" name="search-type" value="files"> Files</label>
+          <label><input type="radio" name="search-type" value="folders"> Folders</label>
+        </div>
+      </div>
+
+      <!-- File browser area (Phase 3 will populate this) -->
+      <div id="browser-area">
+        <div id="empty-state" class="empty-state">
+          <p>📂 No music indexed yet.</p>
+          <p>Go to <a href="#" class="tab-link" data-tab="settings">Settings</a> to configure your server and run the indexer.</p>
+        </div>
+        <div id="breadcrumb" class="breadcrumb hidden"></div>
+        <div id="file-list" class="file-list hidden"></div>
+      </div>
+    </div>
+
+    <!-- SETTINGS TAB -->
+    <div id="tab-settings" class="tab-content hidden">
+      <div class="settings-card">
+        <h2>Sonos</h2>
+        <form id="settings-form">
+          <div class="form-group">
+            <label for="sonos_ip">Speaker IP Address</label>
+            <input type="text" id="sonos_ip" name="sonos_ip" placeholder="10.0.1.90">
+          </div>
+
+          <h2>Music Server</h2>
+          <div class="form-group">
+            <label for="server_type">Protocol</label>
+            <select id="server_type" name="server_type">
+              <option value="sftp">SFTP</option>
+              <option value="ftp">FTP</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="server_host">Host / IP</label>
+            <input type="text" id="server_host" name="server_host" placeholder="192.168.1.10">
+          </div>
+          <div class="form-group">
+            <label for="server_port">Port</label>
+            <input type="number" id="server_port" name="server_port" placeholder="22">
+          </div>
+          <div class="form-group">
+            <label for="server_user">Username</label>
+            <input type="text" id="server_user" name="server_user">
+          </div>
+          <div class="form-group">
+            <label for="server_password">Password</label>
+            <input type="password" id="server_password" name="server_password">
+          </div>
+          <div class="form-group">
+            <label for="server_path">Root Path on Server</label>
+            <input type="text" id="server_path" name="server_path" placeholder="/home/music">
+          </div>
+
+          <h2>Advanced</h2>
+          <div class="form-group">
+            <label for="webserver_host">
+              This Server's LAN Address
+              <span class="label-hint">(leave blank to auto-detect — used to build URLs for Sonos)</span>
+            </label>
+            <input type="text" id="webserver_host" name="webserver_host" placeholder="192.168.1.5:8000">
+          </div>
+        </form>
+
+        <div class="form-actions">
+          <button id="save-settings-btn" class="btn-primary">Save Settings</button>
+        </div>
+      </div>
+
+      <div class="settings-card">
+        <h2>Music Index</h2>
+        <p class="index-meta">
+          Last indexed: <span id="last-indexed">Never</span>
+        </p>
+        <div id="settings-index-progress" class="indexing-banner hidden">
+          <span class="spinner"></span>
+          Indexing… <strong id="settings-index-count">0</strong> entries found
+        </div>
+        <div class="form-actions">
+          <button id="reindex-btn" class="btn-primary">Re-index Now</button>
+          <button id="interrupt-settings-btn" class="btn-danger hidden">Interrupt & Clear</button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Toast notification container -->
+  <div id="toast-container"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
