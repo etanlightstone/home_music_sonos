@@ -27,6 +27,34 @@ button {
     cursor: pointer;
 }
 
+.controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin: 0 20px 10px;
+}
+
+.controls label {
+    margin-right: 4px;
+    color: #aaa;
+}
+
+.granularity-btn {
+    margin: 0;
+    padding: 8px 16px;
+    background: #222;
+    color: #ccc;
+    border: 1px solid #444;
+}
+
+.granularity-btn.active {
+    background: #335;
+    color: white;
+    border-color: #68a;
+}
+
 canvas {
     border: 1px solid #333;
     width: 95%;
@@ -42,12 +70,62 @@ canvas {
 
 <button id="startBtn">Start Visualizer</button>
 
+<div class="controls">
+    <label>Bar detail:</label>
+    <button type="button" class="granularity-btn active" data-bins-per-bar="1">Fine</button>
+    <button type="button" class="granularity-btn" data-bins-per-bar="4">Medium</button>
+    <button type="button" class="granularity-btn" data-bins-per-bar="16">Coarse</button>
+</div>
+
 <canvas id="spectrum" width="1200" height="400"></canvas>
 
 <script>
 const startBtn = document.getElementById("startBtn");
 const canvas = document.getElementById("spectrum");
 const ctx = canvas.getContext("2d");
+const granularityBtns = document.querySelectorAll(".granularity-btn");
+
+let binsPerBar = 1;
+
+granularityBtns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+        binsPerBar = Number(btn.dataset.binsPerBar);
+        granularityBtns.forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+    });
+});
+
+// Compute how many bins the original design showed (barWidth = canvasW/bufferLen*2.5, gap 1px).
+// We reuse that same frequency range for all three modes.
+function getVisibleBinCount(bufferLength) {
+    const singleBarWidth = canvas.width / bufferLength * 2.5;
+    return Math.floor(canvas.width / (singleBarWidth + 1));
+}
+
+function drawSpectrumBars(dataArray, bufferLength) {
+    const visibleBins = getVisibleBinCount(bufferLength);
+    const barCount = Math.ceil(visibleBins / binsPerBar);
+    const barWidth = (canvas.width - barCount) / barCount; // leave 1px gap per bar
+
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    for (let bar = 0; bar < barCount; bar++) {
+        const start = bar * binsPerBar;
+        const end = Math.min(start + binsPerBar, visibleBins);
+
+        let peak = 0;
+        for (let i = start; i < end; i++) {
+            if (dataArray[i] > peak) peak = dataArray[i];
+        }
+
+        const barHeight = (peak / 255) * canvas.height;
+        const x = bar * (barWidth + 1);
+
+        ctx.fillStyle = `rgb(${peak + 50}, ${255 - peak}, 100)`;
+        ctx.fillRect(x, canvas.height - barHeight, Math.max(1, barWidth), barHeight);
+    }
+}
 
 startBtn.addEventListener("click", async () => {
     try {
@@ -75,37 +153,7 @@ startBtn.addEventListener("click", async () => {
             requestAnimationFrame(draw);
 
             analyser.getByteFrequencyData(dataArray);
-
-            ctx.fillStyle = "#000";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            const barWidth = canvas.width / bufferLength * 2.5;
-
-            let x = 0;
-
-            for (let i = 0; i < bufferLength; i++) {
-                const value = dataArray[i];
-                const barHeight = (value / 255) * canvas.height;
-
-                const red = value + 50;
-                const green = 255 - value;
-                const blue = 100;
-
-                ctx.fillStyle = `rgb(${red}, ${green}, ${blue})`;
-
-                ctx.fillRect(
-                    x,
-                    canvas.height - barHeight,
-                    barWidth,
-                    barHeight
-                );
-
-                x += barWidth + 1;
-
-                if (x > canvas.width) {
-                    break;
-                }
-            }
+            drawSpectrumBars(dataArray, bufferLength);
         }
 
         draw();
