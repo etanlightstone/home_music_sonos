@@ -532,6 +532,7 @@ function updateNowPlaying(title, mode) {
 function setPlayPauseBtn(isPlaying) {
     playback.isPlaying = isPlaying;
     if (btnPlayPause) btnPlayPause.textContent = isPlaying ? '⏸' : '▶';
+    syncEpPlayPauseIcon();
 }
 
 // ── Controls bar button handlers ────────────────────────────
@@ -734,4 +735,220 @@ async function syncSonosState() {
 function proxyUrlFromPath(relPath) {
     const clean = relPath.replace(/^\/+/, '');
     return `/api/proxy/${clean}`;
+}
+
+/* ============================================================
+   PHASE 5 — Expanded Player & Microphone Spectrum Visualizer
+   ============================================================ */
+
+// ── Visualizer state ─────────────────────────────────────────
+const viz = {
+    audioCtx:    null,
+    analyser:    null,
+    stream:      null,
+    bufferLen:   0,
+    dataArray:   null,
+    animFrameId: null,
+    binsPerBar:  4,
+    ready:       false,
+};
+
+let epCanvas = null;
+let epCtx    = null;
+
+const expandedPlayer  = document.getElementById('expanded-player');
+const expandBtn       = document.getElementById('expand-player-btn');
+const epCloseBtn      = document.getElementById('ep-close-btn');
+const epTrackName     = document.getElementById('ep-track-name');
+const epModeBadge     = document.getElementById('ep-mode-badge');
+const epBtnPrev       = document.getElementById('ep-btn-prev');
+const epBtnPlayPause  = document.getElementById('ep-btn-playpause');
+const epBtnNext       = document.getElementById('ep-btn-next');
+const epVizUnavail    = document.getElementById('ep-viz-unavail');
+const epVizWaiting    = document.getElementById('ep-viz-waiting');
+
+document.addEventListener('DOMContentLoaded', initExpandedPlayer);
+
+function initExpandedPlayer() {
+    epCanvas = document.getElementById('ep-canvas');
+    epCtx    = epCanvas ? epCanvas.getContext('2d') : null;
+
+    expandBtn?.addEventListener('click',   openExpandedPlayer);
+    epCloseBtn?.addEventListener('click',  closeExpandedPlayer);
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && expandedPlayer?.classList.contains('ep-open')) {
+            closeExpandedPlayer();
+        }
+    });
+
+    epBtnPrev?.addEventListener('click',      onPrev);
+    epBtnNext?.addEventListener('click',      onNext);
+    epBtnPlayPause?.addEventListener('click', onPlayPause);
+
+    document.querySelectorAll('.ep-grain-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            viz.binsPerBar = Number(btn.dataset.bins);
+            document.querySelectorAll('.ep-grain-btn').forEach(b =>
+                b.classList.remove('ep-grain-active'));
+            btn.classList.add('ep-grain-active');
+        });
+    });
+
+    window.addEventListener('resize', syncCanvasSize);
+}
+
+function openExpandedPlayer() {
+    if (!expandedPlayer) return;
+
+    syncEpTrackInfo();
+
+    expandedPlayer.classList.add('ep-open');
+    expandedPlayer.setAttribute('aria-hidden', 'false');
+
+    expandBtn.style.display = 'none';
+
+    syncCanvasSize();
+
+    startVisualizer();
+}
+
+function closeExpandedPlayer() {
+    if (!expandedPlayer) return;
+    expandedPlayer.classList.remove('ep-open');
+    expandedPlayer.setAttribute('aria-hidden', 'true');
+
+    expandBtn.style.display = '';
+
+    stopDrawLoop();
+}
+
+function syncEpTrackInfo() {
+    if (epTrackName) {
+        epTrackName.textContent = playback.currentTitle || '—';
+    }
+    if (epModeBadge && playback.mode) {
+        epModeBadge.textContent = playback.mode === 'sonos' ? 'Sonos' : 'Browser';
+        epModeBadge.className   = `ep-mode-badge ${playback.mode}`;
+    }
+}
+
+(function patchUpdateNowPlaying() {
+    const _original = window.updateNowPlaying || updateNowPlaying;
+    const patched = function(title, mode) {
+        _original(title, mode);
+        if (expandedPlayer?.classList.contains('ep-open')) {
+            syncEpTrackInfo();
+        }
+        syncEpPlayPauseIcon();
+    };
+    window._patchedUpdateNowPlaying = patched;
+})();
+
+
+
+function syncEpPlayPauseIcon() {
+    if (epBtnPlayPause) {
+        epBtnPlayPause.textContent = playback.isPlaying ? '⏸' : '▶';
+    }
+}
+
+function syncCanvasSize() {
+    if (!epCanvas) return;
+    const wrap = document.getElementById('ep-viz-wrap');
+    if (!wrap) return;
+    const w = wrap.offsetWidth;
+    const h = wrap.offsetHeight;
+    if (w > 0 && h > 0) {
+        epCanvas.width  = w;
+        epCanvas.height = h;
+    }
+}
+
+async function startVisualizer() {
+    epVizWaiting?.classList.remove('hidden');
+    epVizUnavail?.classList.add('hidden');
+
+    if (!viz.ready) {
+        try {
+            viz.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+            viz.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+            const source  = viz.audioCtx.createMediaStreamSource(viz.stream);
+
+            viz.analyser  = viz.audioCtx.createAnalyser();
+            viz.analyser.fftSize               = 2048;
+            viz.analyser.smoothingTimeConstant = 0.8;
+
+            source.connect(viz.analyser);
+
+            viz.bufferLen  = viz.analyser.frequencyBinCount;
+            viz.dataArray  = new Uint8Array(viz.bufferLen);
+            viz.ready      = true;
+
+        } catch (err) {
+            console.error('[Visualizer] Mic error:', err);
+            epVizWaiting?.classList.add('hidden');
+            epVizUnavail?.classList.remove('hidden');
+            return;
+        }
+    } else if (viz.audioCtx?.state === 'suspended') {
+        await viz.audioCtx.resume();
+    }
+
+    epVizWaiting?.classList.add('hidden');
+
+    startDrawLoop();
+}
+
+function startDrawLoop() {
+    stopDrawLoop();
+    drawFrame();
+}
+
+function stopDrawLoop() {
+    if (viz.animFrameId !== null) {
+        cancelAnimationFrame(viz.animFrameId);
+        viz.animFrameId = null;
+    }
+}
+
+function drawFrame() {
+    if (!viz.ready || !viz.analyser || !epCtx || !epCanvas) return;
+
+    viz.analyser.getByteFrequencyData(viz.dataArray);
+    drawSpectrumBars(viz.dataArray, viz.bufferLen);
+
+    viz.animFrameId = requestAnimationFrame(drawFrame);
+}
+
+function getVisibleBinCount(bufferLength) {
+    const singleBarWidth = epCanvas.width / bufferLength * 2.5;
+    return Math.floor(epCanvas.width / (singleBarWidth + 1));
+}
+
+function drawSpectrumBars(dataArray, bufferLength) {
+    const visibleBins = getVisibleBinCount(bufferLength);
+    const barCount    = Math.ceil(visibleBins / viz.binsPerBar);
+    const barWidth    = (epCanvas.width - barCount) / barCount;
+
+    epCtx.fillStyle = '#000';
+    epCtx.fillRect(0, 0, epCanvas.width, epCanvas.height);
+
+    for (let bar = 0; bar < barCount; bar++) {
+        const start = bar * viz.binsPerBar;
+        const end   = Math.min(start + viz.binsPerBar, visibleBins);
+
+        let peak = 0;
+        for (let i = start; i < end; i++) {
+            if (dataArray[i] > peak) peak = dataArray[i];
+        }
+
+        const barHeight = (peak / 255) * epCanvas.height;
+        const x         = bar * (barWidth + 1);
+
+        epCtx.fillStyle = `rgb(${peak + 50}, ${255 - peak}, 100)`;
+        epCtx.fillRect(x, epCanvas.height - barHeight, Math.max(1, barWidth), barHeight);
+    }
 }

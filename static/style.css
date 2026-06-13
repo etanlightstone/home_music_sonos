@@ -448,3 +448,229 @@ a:hover { text-decoration: underline; }
 .ext-ogg  { background: rgba(200,100,255,0.2); color: #cc66ff; }
 .ext-aiff,
 .ext-aif  { background: rgba(255,160,50,0.2);  color: #ffa032; }
+
+/* ============================================================
+   PHASE 5 — Expanded Player & Spectrum Visualizer
+   ============================================================ */
+
+/* ── Expand icon button on the compact playbar ── */
+.expand-btn {
+  margin-left: auto;
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  line-height: 1;
+}
+.expand-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+}
+
+/* ── Expanded player overlay ──────────────────── */
+.expanded-player {
+  position: fixed;
+  top: var(--topnav-h);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--bg-primary);
+  z-index: 98;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+
+  transform: translateY(100%);
+  transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+}
+.expanded-player.ep-open {
+  transform: translateY(0);
+}
+
+/* ── Expanded player header ─────────────────────── */
+.ep-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 20px 28px 12px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+}
+.ep-track-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.ep-now-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.ep-track-name {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 70vw;
+}
+.ep-mode-badge {
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  align-self: flex-start;
+}
+.ep-mode-badge.sonos   { background: var(--accent-dim); color: var(--accent); }
+.ep-mode-badge.browser { background: rgba(100,140,255,0.15); color: #6699ff; }
+
+.ep-close-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+  margin-left: 16px;
+}
+.ep-close-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+/* ── Spectrum visualizer area ─────────────────── */
+.ep-viz-wrap {
+  flex: 1;
+  position: relative;
+  background: #000;
+  overflow: hidden;
+  min-height: 0;
+}
+
+#ep-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.ep-viz-unavail,
+.ep-viz-waiting {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(0, 0, 0, 0.75);
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  text-align: center;
+  padding: 20px;
+}
+.ep-viz-unavail.hidden,
+.ep-viz-waiting.hidden  { display: none; }
+.ep-viz-unavail-icon    { font-size: 2.5rem; }
+.ep-viz-unavail-msg     { font-weight: 600; color: var(--text-primary); }
+.ep-viz-unavail-sub     { font-size: 0.8rem; color: var(--text-muted); max-width: 340px; }
+
+/* ── Granularity controls ─────────────────────── */
+.ep-granularity {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 20px;
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+}
+.ep-granularity-label {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-right: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+.ep-grain-btn {
+  padding: 6px 18px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.ep-grain-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.ep-grain-btn.ep-grain-active {
+  background: #223355;
+  color: #fff;
+  border-color: #6688aa;
+}
+
+/* ── Large playback controls ──────────────────── */
+.ep-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 16px 20px 24px;
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+}
+.ep-ctrl-btn {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: 50%;
+  width: 52px;
+  height: 52px;
+  font-size: 1.3rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  flex-shrink: 0;
+}
+.ep-ctrl-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-hover);
+}
+.ep-ctrl-btn:active { transform: scale(0.93); }
+.ep-ctrl-main {
+  width: 68px;
+  height: 68px;
+  font-size: 1.6rem;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #000;
+}
+.ep-ctrl-main:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}

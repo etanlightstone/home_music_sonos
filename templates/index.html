@@ -29,6 +29,13 @@
       <span id="now-playing-mode" class="mode-badge"></span>
     </div>
     <audio id="audio-player" hidden></audio>
+
+    <!-- Expand player button -->
+    <button id="expand-player-btn" class="expand-btn" title="Expand player">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+        <path d="M1 1h5v1.5H2.5V7H1V1zm9 0h5v6h-1.5V2.5H10V1zM1 9h1.5v4.5H7V15H1V9zm12.5 4.5H10V15h5V9h-1.5v4.5z"/>
+      </svg>
+    </button>
   </div>
 
   <!-- Main content area -->
@@ -139,6 +146,61 @@
 
   <!-- Toast notification container -->
   <div id="toast-container"></div>
+
+  <!-- ═══════════════════════════════════════════════════════
+       EXPANDED PLAYER OVERLAY
+       Hidden by default. Slides up from below nav when opened.
+       ═══════════════════════════════════════════════════════ -->
+  <div id="expanded-player" class="expanded-player" aria-hidden="true">
+
+    <!-- Header row: track info + close -->
+    <div class="ep-header">
+      <div class="ep-track-info">
+        <span class="ep-now-label">NOW PLAYING</span>
+        <span class="ep-track-name" id="ep-track-name">—</span>
+        <span class="ep-mode-badge" id="ep-mode-badge"></span>
+      </div>
+      <button class="ep-close-btn" id="ep-close-btn" title="Collapse player">
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M6 1H1v5h1.5V2.5H6V1zm4 0v1.5h3.5V6H15V1h-5zM1 10h1.5v3.5H6V15H1v-5zm12.5 3.5H10V15h5v-5h-1.5v3.5z"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Spectrum visualizer -->
+    <div class="ep-viz-wrap" id="ep-viz-wrap">
+      <canvas id="ep-canvas"></canvas>
+
+      <!-- Shown if mic permission denied or unavailable -->
+      <div class="ep-viz-unavail hidden" id="ep-viz-unavail">
+        <span class="ep-viz-unavail-icon">🎤</span>
+        <span class="ep-viz-unavail-msg">Microphone unavailable</span>
+        <span class="ep-viz-unavail-sub">Grant microphone permission in your browser to see the spectrum visualizer</span>
+      </div>
+
+      <!-- Shown while waiting for mic permission -->
+      <div class="ep-viz-waiting" id="ep-viz-waiting">
+        <span class="spinner"></span>
+        <span>Waiting for microphone…</span>
+      </div>
+    </div>
+
+    <!-- Granularity controls -->
+    <div class="ep-granularity">
+      <span class="ep-granularity-label">Bar detail</span>
+      <button class="ep-grain-btn" data-bins="1">Fine</button>
+      <button class="ep-grain-btn ep-grain-active" data-bins="4">Medium</button>
+      <button class="ep-grain-btn" data-bins="16">Coarse</button>
+    </div>
+
+    <!-- Large playback controls -->
+    <div class="ep-controls">
+      <button class="ep-ctrl-btn" id="ep-btn-prev"      title="Previous">⏮</button>
+      <button class="ep-ctrl-btn ep-ctrl-main" id="ep-btn-playpause" title="Play / Pause">⏸</button>
+      <button class="ep-ctrl-btn" id="ep-btn-next"      title="Next">⏭</button>
+    </div>
+
+  </div>
 
   <script src="/static/app.js"></script>
 </body>
