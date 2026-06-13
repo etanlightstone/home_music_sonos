@@ -1,0 +1,3 @@
+Create a phased detailed implementation plan with sample code as needed based on the attached PRD doc as separate numbered md files I can download that make sense to do in sequence so that I can have a coding agent with limited context window work on each phase independently (fresh context for each phase) to build the web application defined in the PRD. Consider breaking it up into 3 or 4 phases, but I trust your judgement on how granular, just make sure each phase has some kind of simple validation step.
+
+I've attached a sample sonos.py file that might offer some hints on how to implement some of what the PRD is asking for.
