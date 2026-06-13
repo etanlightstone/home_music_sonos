@@ -72,8 +72,8 @@ canvas {
 
 <div class="controls">
     <label>Bar detail:</label>
-    <button type="button" class="granularity-btn active" data-bins-per-bar="1">Fine</button>
-    <button type="button" class="granularity-btn" data-bins-per-bar="4">Medium</button>
+    <button type="button" class="granularity-btn" data-bins-per-bar="1">Fine</button>
+    <button type="button" class="granularity-btn active" data-bins-per-bar="4">Medium</button>
     <button type="button" class="granularity-btn" data-bins-per-bar="16">Coarse</button>
 </div>
 
@@ -85,7 +85,7 @@ const canvas = document.getElementById("spectrum");
 const ctx = canvas.getContext("2d");
 const granularityBtns = document.querySelectorAll(".granularity-btn");
 
-let binsPerBar = 1;
+let binsPerBar = 4;
 
 granularityBtns.forEach((btn) => {
     btn.addEventListener("click", () => {
