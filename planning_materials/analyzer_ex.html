@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Microphone Spectrum Analyzer</title>
+
+<style>
+body {
+    margin: 0;
+    background: #111;
+    color: white;
+    font-family: Arial, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+h1 {
+    margin-top: 20px;
+}
+
+button {
+    margin: 20px;
+    padding: 12px 24px;
+    font-size: 16px;
+    cursor: pointer;
+}
+
+canvas {
+    border: 1px solid #333;
+    width: 95%;
+    max-width: 1200px;
+    height: 400px;
+    background: black;
+}
+</style>
+</head>
+<body>
+
+<h1>Live Microphone Spectrum Analyzer</h1>
+
+<button id="startBtn">Start Visualizer</button>
+
+<canvas id="spectrum" width="1200" height="400"></canvas>
+
+<script>
+const startBtn = document.getElementById("startBtn");
+const canvas = document.getElementById("spectrum");
+const ctx = canvas.getContext("2d");
+
+startBtn.addEventListener("click", async () => {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+            audio: true
+        });
+
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+        const source = audioContext.createMediaStreamSource(stream);
+
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 2048;
+        analyser.smoothingTimeConstant = 0.8;
+
+        source.connect(analyser);
+
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+
+        startBtn.disabled = true;
+        startBtn.textContent = "Running";
+
+        function draw() {
+            requestAnimationFrame(draw);
+
+            analyser.getByteFrequencyData(dataArray);
+
+            ctx.fillStyle = "#000";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const barWidth = canvas.width / bufferLength * 2.5;
+
+            let x = 0;
+
+            for (let i = 0; i < bufferLength; i++) {
+                const value = dataArray[i];
+                const barHeight = (value / 255) * canvas.height;
+
+                const red = value + 50;
+                const green = 255 - value;
+                const blue = 100;
+
+                ctx.fillStyle = `rgb(${red}, ${green}, ${blue})`;
+
+                ctx.fillRect(
+                    x,
+                    canvas.height - barHeight,
+                    barWidth,
+                    barHeight
+                );
+
+                x += barWidth + 1;
+
+                if (x > canvas.width) {
+                    break;
+                }
+            }
+        }
+
+        draw();
+
+    } catch (err) {
+        alert("Microphone access denied or unavailable.\n\n" + err.message);
+        console.error(err);
+    }
+});
+</script>
+
+</body>
+</html>
