@@ -8,6 +8,7 @@ from database import init_db
 from routers import settings as settings_router
 from routers import index_router
 from routers import proxy
+from routers import files as files_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -25,6 +26,7 @@ templates = Jinja2Templates(env=jinja_env)
 app.include_router(settings_router.router, prefix="/api/settings",  tags=["settings"])
 app.include_router(index_router.router,    prefix="/api/index",      tags=["index"])
 app.include_router(proxy.router,           prefix="/api/proxy",      tags=["proxy"])
+app.include_router(files_router.router,    prefix="/api/files",      tags=["files"])
 
 @app.get("/")
 async def index(request: Request):
