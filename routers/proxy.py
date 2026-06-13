@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from urllib.parse import unquote
+from urllib.parse import unquote, quote
 import socket
 
 router = APIRouter()
@@ -35,7 +35,7 @@ def get_base_url(settings: dict) -> str:
 def build_proxy_url(rel_path: str, settings: dict) -> str:
     """Build the full proxy URL for a relative path (for Sonos to call)."""
     base = get_base_url(settings)
-    safe_path = rel_path.lstrip('/')
+    safe_path = quote(rel_path.lstrip('/'), safe='/')
     return f"{base}/api/proxy/{safe_path}"
 
 
