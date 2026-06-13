@@ -655,6 +655,8 @@ window.playOnSonos = async function(relPath, name) {
         setPlayPauseBtn(true);
         startSonosPoller();
         showToast(`Playing on Sonos: ${name}`, 'success');
+        // Check state after 1s to catch immediate failures (e.g. Sonos can't reach proxy URL)
+        setTimeout(syncSonosState, 1000);
     } catch (err) {
         showToast('Sonos play failed: ' + err.message, 'error');
     }
@@ -680,6 +682,7 @@ window.playFolderOnSonos = async function(folderPath, folderName) {
         setPlayPauseBtn(true);
         startSonosPoller();
         showToast(`${data.track_count} tracks queued on Sonos`, 'success');
+        setTimeout(syncSonosState, 1000);
     } catch (err) {
         showToast('Sonos folder play failed: ' + err.message, 'error');
     }
@@ -708,6 +711,7 @@ async function syncSonosState() {
         const title    = data.title || playback.currentTitle;
         const isPlaying = state === 'PLAYING';
         const isStopped = state === 'STOPPED' || state === 'NO_MEDIA_PRESENT';
+        const isFailed  = state === 'PLAYBACK_FAILED';
 
         if (title && title !== playback.currentTitle) {
             updateNowPlaying(title, 'sonos');
@@ -715,7 +719,12 @@ async function syncSonosState() {
         playback.isPaused = (state === 'PAUSED_PLAYBACK');
         setPlayPauseBtn(isPlaying);
 
-        if (isStopped) stopSonosPoller();
+        if (isFailed) {
+            stopSonosPoller();
+            showToast('Sonos failed to play — check that the speaker can reach the web server URL', 'error');
+        } else if (isStopped) {
+            stopSonosPoller();
+        }
     } catch (err) {
         // Network error — keep polling, Sonos may be momentarily busy
     }
