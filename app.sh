@@ -17,6 +17,13 @@ echo "Access from LAN at http://$(hostname -I | awk '{print $1}'):8000"
 echo ""
 #uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
+openssl req -x509 -newkey rsa:2048 \
+  -keyout key.pem \
+  -out cert.pem \
+  -days 365 \
+  -nodes \
+  -subj "/CN=10.0.1.50"
+
 uvicorn main:app \
   --host 0.0.0.0 \
   --port 8000 \
