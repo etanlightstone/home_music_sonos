@@ -17,8 +17,7 @@ echo "Access from LAN at http://$(hostname -I | awk '{print $1}'):8000"
 echo ""
 #uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
-mkdir ~/sonosweb-certs
-cd ~/sonosweb-certs
+
 
 openssl req -x509 -newkey rsa:2048 \
   -keyout key.pem \
@@ -31,5 +30,5 @@ uvicorn main:app \
   --host 0.0.0.0 \
   --port 8000 \
   --reload \
-  --ssl-keyfile ~/sonosweb-certs/key.pem \
-  --ssl-certfile ~/sonosweb-certs/cert.pem
+  --ssl-keyfile key.pem \
+  --ssl-certfile cert.pem
