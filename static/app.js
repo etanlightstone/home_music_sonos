@@ -484,7 +484,7 @@ const playback = {
     browserPlaylist: [],
     browserIndex:    -1,
     sonosPoller:     null,
-    sonosQueueTitles: [],
+    sonosQueue:      [],
 };
 
 // ── DOM refs ─────────────────────────────────────────────────
@@ -618,7 +618,7 @@ function _startBrowserTrack(index) {
     audioEl.play().catch(err => console.error('[Audio] play error:', err));
     updateNowPlaying(track.name, 'browser');
     stopSonosPoller();
-    playback.sonosQueueTitles = [];
+    playback.sonosQueue = [];
 }
 
 function onBrowserTrackEnded() {
@@ -654,7 +654,7 @@ window.playOnSonos = async function(relPath, name) {
         }
         if (audioEl) { audioEl.pause(); audioEl.src = ''; }
         playback.isPaused = false;
-        playback.sonosQueueTitles = [];
+        playback.sonosQueue = [];
         updateNowPlaying(name || relPath.split('/').pop(), 'sonos');
         setPlayPauseBtn(true);
         startSonosPoller();
@@ -682,7 +682,10 @@ window.playFolderOnSonos = async function(folderPath, folderName) {
         if (audioEl) { audioEl.pause(); audioEl.src = ''; }
         playback.isPaused = false;
         const firstTitle = data.first_title || folderName;
-        playback.sonosQueueTitles = data.titles || [];
+        playback.sonosQueue = (data.titles || []).map((title, i) => ({
+            title,
+            uri: data.uris && data.uris[i] ? data.uris[i] : null,
+        }));
         updateNowPlaying(firstTitle, 'sonos');
         setPlayPauseBtn(true);
         startSonosPoller();
@@ -714,16 +717,29 @@ async function syncSonosState() {
         const data = await res.json();
         const state    = data.state || 'UNKNOWN';
         const sonosTitle = data.title || '';
-        const tracknum = data.tracknum;
-        const isPlaying = state === 'PLAYING';
-        const isStopped = state === 'STOPPED' || state === 'NO_MEDIA_PRESENT';
-        const isFailed  = state === 'PLAYBACK_FAILED';
+        const sonosUri   = data.uri || '';
+        const tracknum   = data.tracknum || '';
+        const isPlaying  = state === 'PLAYING';
+        const isStopped  = state === 'STOPPED' || state === 'NO_MEDIA_PRESENT';
+        const isFailed   = state === 'PLAYBACK_FAILED';
 
         let title = sonosTitle;
-        if (playback.sonosQueueTitles.length > 0 && tracknum) {
-            const idx = parseInt(tracknum, 10) - 1;
-            if (idx >= 0 && idx < playback.sonosQueueTitles.length) {
-                title = playback.sonosQueueTitles[idx];
+
+        if (playback.sonosQueue.length > 0) {
+            // Fallback 1: match by URI
+            if (sonosUri) {
+                const uriIdx = playback.sonosQueue.findIndex(q => q.uri && sonosUri.includes(q.uri));
+                if (uriIdx !== -1) {
+                    title = playback.sonosQueue[uriIdx].title;
+                }
+            }
+
+            // Fallback 2: use tracknum if URI match failed and title is missing/wrong
+            if (!title && tracknum) {
+                const idx = parseInt(tracknum, 10) - 1;
+                if (idx >= 0 && idx < playback.sonosQueue.length) {
+                    title = playback.sonosQueue[idx].title;
+                }
             }
         } else if (!sonosTitle) {
             title = playback.currentTitle;

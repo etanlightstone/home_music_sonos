@@ -68,6 +68,7 @@ def play_queue(sonos_ip: str, uris: list, titles: list = None) -> dict:
             "track_count": len(uris),
             "first_title": resolved_titles[0] if resolved_titles else uris[0].split('/')[-1],
             "titles": resolved_titles,
+            "uris": uris,
         }
     except Exception as e:
         return {"status": "error", "message": str(e)}
@@ -130,6 +131,7 @@ def get_state(sonos_ip: str) -> dict:
             "position": track.get("position", ""),
             "duration": track.get("duration", ""),
             "uri":      track.get("uri", ""),
+            "tracknum": track.get("tracknum", ""),
         }
     except Exception as e:
         return {
