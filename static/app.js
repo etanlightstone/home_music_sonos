@@ -607,11 +607,15 @@ function updateNowPlaying(title, mode) {
         nowMode.textContent   = mode === 'sonos' ? 'Sonos' : 'Browser';
         nowMode.className     = `mode-badge ${mode}`;
     }
+    if (epBottomTrackName) epBottomTrackName.textContent = title || '—';
 }
 
 function setPlayPauseBtn(isPlaying) {
     playback.isPlaying = isPlaying;
-    if (btnPlayPause) btnPlayPause.textContent = isPlaying ? '⏸' : '▶';
+    if (btnPlayPause) {
+        btnPlayPause.querySelector('.icon-pause').style.display = isPlaying ? '' : 'none';
+        btnPlayPause.querySelector('.icon-play').style.display = isPlaying ? 'none' : '';
+    }
     syncEpPlayPauseIcon();
 }
 
@@ -680,6 +684,13 @@ function setVolumeUI(vol) {
         else if (vol < 70) epVolumeIcon.textContent = '🔉';
         else epVolumeIcon.textContent = '🔊';
     }
+    if (epBottomVolumeIcon) {
+        if (vol === 0) epBottomVolumeIcon.textContent = '🔇';
+        else if (vol < 30) epBottomVolumeIcon.textContent = '🔈';
+        else if (vol < 70) epBottomVolumeIcon.textContent = '🔉';
+        else epBottomVolumeIcon.textContent = '🔊';
+    }
+    if (epBottomVolumeValue) epBottomVolumeValue.textContent = vol;
 }
 
 function onVolumeInput(e) {
@@ -904,16 +915,19 @@ const viz = {
 let epCanvas = null;
 let epCtx    = null;
 
-const expandedPlayer  = document.getElementById('expanded-player');
-const expandBtn       = document.getElementById('expand-player-btn');
-const epCloseBtn      = document.getElementById('ep-close-btn');
-const epTrackName     = document.getElementById('ep-track-name');
-const epModeBadge     = document.getElementById('ep-mode-badge');
-const epBtnPrev       = document.getElementById('ep-btn-prev');
-const epBtnPlayPause  = document.getElementById('ep-btn-playpause');
-const epBtnNext       = document.getElementById('ep-btn-next');
-const epVizUnavail    = document.getElementById('ep-viz-unavail');
-const epVizWaiting    = document.getElementById('ep-viz-waiting');
+const expandedPlayer   = document.getElementById('expanded-player');
+const expandBtn        = document.getElementById('expand-player-btn');
+const epCloseBtn       = document.getElementById('ep-close-btn');
+const epTrackName      = document.getElementById('ep-track-name');
+const epModeBadge      = document.getElementById('ep-mode-badge');
+const epBottomTrackName = document.getElementById('ep-bottom-track-name');
+const epBottomVolumeIcon = document.getElementById('ep-bottom-volume-icon');
+const epBottomVolumeValue = document.getElementById('ep-bottom-volume-value');
+const epBtnPrev        = document.getElementById('ep-btn-prev');
+const epBtnPlayPause   = document.getElementById('ep-btn-playpause');
+const epBtnNext        = document.getElementById('ep-btn-next');
+const epVizUnavail     = document.getElementById('ep-viz-unavail');
+const epVizWaiting     = document.getElementById('ep-viz-waiting');
 
 document.addEventListener('DOMContentLoaded', initExpandedPlayer);
 
@@ -978,6 +992,9 @@ function syncEpTrackInfo() {
     if (epTrackName) {
         epTrackName.textContent = playback.currentTitle || '—';
     }
+    if (epBottomTrackName) {
+        epBottomTrackName.textContent = playback.currentTitle || '—';
+    }
     if (epModeBadge && playback.mode) {
         epModeBadge.textContent = playback.mode === 'sonos' ? 'Sonos' : 'Browser';
         epModeBadge.className   = `ep-mode-badge ${playback.mode}`;
@@ -1000,7 +1017,8 @@ function syncEpTrackInfo() {
 
 function syncEpPlayPauseIcon() {
     if (epBtnPlayPause) {
-        epBtnPlayPause.textContent = playback.isPlaying ? '⏸' : '▶';
+        epBtnPlayPause.querySelector('.ep-icon-pause').style.display = playback.isPlaying ? '' : 'none';
+        epBtnPlayPause.querySelector('.ep-icon-play').style.display = playback.isPlaying ? 'none' : '';
     }
 }
 

@@ -627,6 +627,46 @@ a:hover { text-decoration: underline; }
 .ep-viz-unavail-msg     { font-weight: 600; color: var(--text-primary); }
 .ep-viz-unavail-sub     { font-size: 0.8rem; color: var(--text-muted); max-width: 340px; }
 
+  /* ── Bottom info bar (song title + volume) ────── */
+.ep-bottom-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 28px 14px;
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  min-height: 56px;
+}
+.ep-bottom-track {
+  flex: 1;
+  min-width: 0;
+  margin-right: 16px;
+}
+.ep-bottom-track-name {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ep-bottom-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+.ep-bottom-volume {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+.ep-bottom-volume-icon {
+  font-size: 1rem;
+}
+
 /* ── Granularity controls ─────────────────────── */
 .ep-granularity {
   display: flex;
