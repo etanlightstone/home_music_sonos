@@ -118,7 +118,11 @@ def set_volume(sonos_ip: str, level: int) -> dict:
     player = _player(sonos_ip)
     try:
         level = max(0, min(100, int(level)))
-        player.volume = level
+        group = player.group
+        if group is not None:
+            group.volume = level
+        else:
+            player.volume = level
         return {"status": "ok", "volume": level}
     except Exception as e:
         return {"status": "error", "message": str(e)}
@@ -127,6 +131,9 @@ def set_volume(sonos_ip: str, level: int) -> dict:
 def get_volume(sonos_ip: str) -> dict:
     player = _player(sonos_ip)
     try:
+        group = player.group
+        if group is not None:
+            return {"volume": group.volume}
         return {"volume": player.volume}
     except Exception as e:
         return {"volume": 0, "error": str(e)}
@@ -141,6 +148,11 @@ def get_state(sonos_ip: str) -> dict:
     try:
         transport = player.get_current_transport_info()
         track     = player.get_current_track_info()
+        group = player.group
+        if group is not None:
+            vol = group.volume
+        else:
+            vol = player.volume
         return {
             "state":    transport.get("current_transport_state", "UNKNOWN"),
             "title":    track.get("title", ""),
@@ -150,7 +162,7 @@ def get_state(sonos_ip: str) -> dict:
             "duration": track.get("duration", ""),
             "uri":      track.get("uri", ""),
             "tracknum": track.get("tracknum", ""),
-            "volume":   player.volume,
+            "volume":   vol,
         }
     except Exception as e:
         return {
