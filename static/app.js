@@ -511,6 +511,38 @@ function initPlaybackControls() {
         audioEl.addEventListener('pause',   () => setPlayPauseBtn(false));
         audioEl.addEventListener('error',   (e) => console.error('[Audio]', e));
     }
+
+    // Check if Sonos is already playing (handles browser refresh recovery)
+    checkSonosOnLoad();
+}
+
+async function checkSonosOnLoad() {
+    try {
+        const res  = await fetch('/api/sonos/state');
+        const data = await res.json();
+        const state = data.state || 'UNKNOWN';
+        const isPlaying = state === 'PLAYING';
+        const isPaused = state === 'PAUSED_PLAYBACK';
+
+        if (isPlaying || isPaused) {
+            const sonosTitle = data.title || 'Now Playing';
+            const sonosUri   = data.uri || '';
+
+            let title = sonosTitle;
+            if (playback.sonosQueue.length > 0 && sonosUri) {
+                const uriIdx = playback.sonosQueue.findIndex(q => q.uri && sonosUri.includes(q.uri));
+                if (uriIdx !== -1) title = playback.sonosQueue[uriIdx].title;
+            }
+
+            playback.mode = 'sonos';
+            playback.isPaused = isPaused;
+            updateNowPlaying(title, 'sonos');
+            setPlayPauseBtn(isPlaying);
+            startSonosPoller();
+        }
+    } catch (err) {
+        // Sonos unavailable or not configured — no-op
+    }
 }
 
 // ── Show/hide playbar ────────────────────────────────────────
