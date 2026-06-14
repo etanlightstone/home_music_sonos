@@ -67,7 +67,8 @@ async def play_folder(req: PlayFolderRequest):
         **result,
         "folder": req.path,
         "track_count": len(files),
-        "first_title": titles[0] if titles else "",
+        "first_title": result.get("first_title", titles[0] if titles else ""),
+        "titles": result.get("titles", titles or []),
     }
 
 

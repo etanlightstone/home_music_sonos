@@ -477,13 +477,14 @@ window.loadBrowser = loadBrowser;
 
 // ── Shared playback state ────────────────────────────────────
 const playback = {
-    mode:          null,
-    currentTitle:  '',
-    isPlaying:     false,
-    isPaused:      false,
+    mode:            null,
+    currentTitle:    '',
+    isPlaying:       false,
+    isPaused:        false,
     browserPlaylist: [],
     browserIndex:    -1,
-    sonosPoller: null,
+    sonosPoller:     null,
+    sonosQueueTitles: [],
 };
 
 // ── DOM refs ─────────────────────────────────────────────────
@@ -617,6 +618,7 @@ function _startBrowserTrack(index) {
     audioEl.play().catch(err => console.error('[Audio] play error:', err));
     updateNowPlaying(track.name, 'browser');
     stopSonosPoller();
+    playback.sonosQueueTitles = [];
 }
 
 function onBrowserTrackEnded() {
@@ -652,6 +654,7 @@ window.playOnSonos = async function(relPath, name) {
         }
         if (audioEl) { audioEl.pause(); audioEl.src = ''; }
         playback.isPaused = false;
+        playback.sonosQueueTitles = [];
         updateNowPlaying(name || relPath.split('/').pop(), 'sonos');
         setPlayPauseBtn(true);
         startSonosPoller();
@@ -679,6 +682,7 @@ window.playFolderOnSonos = async function(folderPath, folderName) {
         if (audioEl) { audioEl.pause(); audioEl.src = ''; }
         playback.isPaused = false;
         const firstTitle = data.first_title || folderName;
+        playback.sonosQueueTitles = data.titles || [];
         updateNowPlaying(firstTitle, 'sonos');
         setPlayPauseBtn(true);
         startSonosPoller();
@@ -709,10 +713,21 @@ async function syncSonosState() {
         const res  = await fetch('/api/sonos/state');
         const data = await res.json();
         const state    = data.state || 'UNKNOWN';
-        const title    = data.title || playback.currentTitle;
+        const sonosTitle = data.title || '';
+        const tracknum = data.tracknum;
         const isPlaying = state === 'PLAYING';
         const isStopped = state === 'STOPPED' || state === 'NO_MEDIA_PRESENT';
         const isFailed  = state === 'PLAYBACK_FAILED';
+
+        let title = sonosTitle;
+        if (playback.sonosQueueTitles.length > 0 && tracknum) {
+            const idx = parseInt(tracknum, 10) - 1;
+            if (idx >= 0 && idx < playback.sonosQueueTitles.length) {
+                title = playback.sonosQueueTitles[idx];
+            }
+        } else if (!sonosTitle) {
+            title = playback.currentTitle;
+        }
 
         if (title && title !== playback.currentTitle) {
             updateNowPlaying(title, 'sonos');

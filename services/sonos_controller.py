@@ -57,14 +57,17 @@ def play_queue(sonos_ip: str, uris: list, titles: list = None) -> dict:
     player = _player(sonos_ip)
     try:
         player.clear_queue()
+        resolved_titles = []
         for i, uri in enumerate(uris):
             title = (titles[i] if titles and i < len(titles) else f"Track {i+1}")
+            resolved_titles.append(title)
             player.add_uri_to_queue(uri)
         player.play_from_queue(0)
         return {
             "status": "playing_queue",
             "track_count": len(uris),
-            "first_title": titles[0] if titles else uris[0].split('/')[-1],
+            "first_title": resolved_titles[0] if resolved_titles else uris[0].split('/')[-1],
+            "titles": resolved_titles,
         }
     except Exception as e:
         return {"status": "error", "message": str(e)}
