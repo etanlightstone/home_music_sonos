@@ -518,6 +518,7 @@ const playback = {
     browserIndex:    -1,
     sonosPoller:     null,
     sonosQueue:      [],
+    volume:          50,
 };
 
 // ── DOM refs ─────────────────────────────────────────────────
@@ -529,6 +530,14 @@ const btnNext       = document.getElementById('btn-next');
 const nowLabel      = document.getElementById('now-playing-label');
 const nowMode       = document.getElementById('now-playing-mode');
 const mainContent   = document.querySelector('.main-content');
+
+// Volume DOM refs
+const volumeIcon    = document.getElementById('volume-icon');
+const volumeSlider  = document.getElementById('volume-slider');
+const volumeValue   = document.getElementById('volume-value');
+const epVolumeIcon  = document.getElementById('ep-volume-icon');
+const epVolumeSlider= document.getElementById('ep-volume-slider');
+const epVolumeValue = document.getElementById('ep-volume-value');
 
 // ── Initialise controls bar ──────────────────────────────────
 document.addEventListener('DOMContentLoaded', initPlaybackControls);
@@ -544,6 +553,10 @@ function initPlaybackControls() {
         audioEl.addEventListener('pause',   () => setPlayPauseBtn(false));
         audioEl.addEventListener('error',   (e) => console.error('[Audio]', e));
     }
+
+    // Volume sliders
+    volumeSlider?.addEventListener('input', onVolumeInput);
+    epVolumeSlider?.addEventListener('input', onVolumeInput);
 
     // Check if Sonos is already playing (handles browser refresh recovery)
     checkSonosOnLoad();
@@ -571,6 +584,7 @@ async function checkSonosOnLoad() {
             playback.isPaused = isPaused;
             updateNowPlaying(title, 'sonos');
             setPlayPauseBtn(isPlaying);
+            if (data.volume !== undefined) setVolumeUI(data.volume);
             startSonosPoller();
         }
     } catch (err) {
@@ -643,6 +657,40 @@ function onPrev() {
         fetch('/api/sonos/previous', { method: 'POST' })
             .then(r => r.json())
             .then(() => setTimeout(syncSonosState, 500));
+    }
+}
+
+// ── Volume control ───────────────────────────────────────────
+
+function setVolumeUI(vol) {
+    playback.volume = vol;
+    if (volumeSlider) volumeSlider.value = vol;
+    if (epVolumeSlider) epVolumeSlider.value = vol;
+    if (volumeValue) volumeValue.textContent = vol;
+    if (epVolumeValue) epVolumeValue.textContent = vol;
+    if (volumeIcon) {
+        if (vol === 0) volumeIcon.textContent = '🔇';
+        else if (vol < 30) volumeIcon.textContent = '🔈';
+        else if (vol < 70) volumeIcon.textContent = '🔉';
+        else volumeIcon.textContent = '🔊';
+    }
+    if (epVolumeIcon) {
+        if (vol === 0) epVolumeIcon.textContent = '🔇';
+        else if (vol < 30) epVolumeIcon.textContent = '🔈';
+        else if (vol < 70) epVolumeIcon.textContent = '🔉';
+        else epVolumeIcon.textContent = '🔊';
+    }
+}
+
+function onVolumeInput(e) {
+    const vol = parseInt(e.target.value, 10);
+    setVolumeUI(vol);
+    if (playback.mode === 'sonos') {
+        fetch('/api/sonos/set-volume', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ volume: vol }),
+        }).catch(err => console.error('[Volume]', err));
     }
 }
 
@@ -816,6 +864,10 @@ async function syncSonosState() {
         playback.isPaused = (state === 'PAUSED_PLAYBACK');
         setPlayPauseBtn(isPlaying);
 
+        if (data.volume !== undefined && data.volume !== playback.volume) {
+            setVolumeUI(data.volume);
+        }
+
         if (isFailed) {
             stopSonosPoller();
             showToast('Sonos failed to play — check that the speaker can reach the web server URL', 'error');
@@ -898,6 +950,9 @@ function openExpandedPlayer() {
     if (!expandedPlayer) return;
 
     syncEpTrackInfo();
+    if (playback.mode === 'sonos' && playback.volume !== undefined) {
+        setVolumeUI(playback.volume);
+    }
 
     expandedPlayer.classList.add('ep-open');
     expandedPlayer.setAttribute('aria-hidden', 'false');

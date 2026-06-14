@@ -24,6 +24,11 @@
       <button id="btn-playpause" class="ctrl-btn" title="Pause/Resume">⏸</button>
       <button id="btn-next" class="ctrl-btn" title="Next">⏭</button>
     </div>
+    <div class="playbar-volume" id="playbar-volume">
+      <span class="volume-icon" id="volume-icon">🔊</span>
+      <input type="range" id="volume-slider" class="volume-slider" min="0" max="100" value="50">
+      <span class="volume-value" id="volume-value">50</span>
+    </div>
     <div class="playbar-info">
       <span id="now-playing-label" class="now-playing-label">Nothing playing</span>
       <span id="now-playing-mode" class="mode-badge"></span>
@@ -198,6 +203,13 @@
           <path d="M3.5 2.5l4.5 4.5 4.5-4.5v1L8 7 3.5 3.5v-1zm0 11v-1L8 9l4.5 3.5v1l-4.5-4.5-4.5 4.5z"/>
         </svg>
       </button>
+    </div>
+
+    <!-- Volume slider -->
+    <div class="ep-volume">
+      <span class="ep-volume-icon" id="ep-volume-icon">🔊</span>
+      <input type="range" id="ep-volume-slider" class="ep-volume-slider" min="0" max="100" value="50">
+      <span class="ep-volume-value" id="ep-volume-value">50</span>
     </div>
 
   </div>

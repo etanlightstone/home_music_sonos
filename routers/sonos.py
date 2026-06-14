@@ -31,6 +31,10 @@ class PlayFolderRequest(BaseModel):
     path: str
 
 
+class SetVolumeRequest(BaseModel):
+    volume: int
+
+
 # ── Endpoints ────────────────────────────────────────────────
 
 @router.post("/play-file")
@@ -106,3 +110,17 @@ async def sonos_state():
     sonos_ip = _get_sonos_ip()
     loop     = asyncio.get_event_loop()
     return await loop.run_in_executor(None, sc.get_state, sonos_ip)
+
+
+@router.get("/volume")
+async def get_volume():
+    sonos_ip = _get_sonos_ip()
+    loop     = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, sc.get_volume, sonos_ip)
+
+
+@router.post("/set-volume")
+async def set_volume(req: SetVolumeRequest):
+    sonos_ip = _get_sonos_ip()
+    loop     = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, sc.set_volume, sonos_ip, req.volume)

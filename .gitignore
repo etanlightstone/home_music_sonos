@@ -63,7 +63,7 @@ htmlcov/
 *.db
 *.sqlite
 *.sqlite3
-
+*.pem
 # Common local app data
 data/
 tmp/

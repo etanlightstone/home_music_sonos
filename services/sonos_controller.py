@@ -114,6 +114,24 @@ def prev_track(sonos_ip: str) -> dict:
 
 # ── State query ──────────────────────────────────────────────
 
+def set_volume(sonos_ip: str, level: int) -> dict:
+    player = _player(sonos_ip)
+    try:
+        level = max(0, min(100, int(level)))
+        player.volume = level
+        return {"status": "ok", "volume": level}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+def get_volume(sonos_ip: str) -> dict:
+    player = _player(sonos_ip)
+    try:
+        return {"volume": player.volume}
+    except Exception as e:
+        return {"volume": 0, "error": str(e)}
+
+
 def get_state(sonos_ip: str) -> dict:
     """
     Returns current transport state and track info.
@@ -132,6 +150,7 @@ def get_state(sonos_ip: str) -> dict:
             "duration": track.get("duration", ""),
             "uri":      track.get("uri", ""),
             "tracknum": track.get("tracknum", ""),
+            "volume":   player.volume,
         }
     except Exception as e:
         return {

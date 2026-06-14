@@ -122,6 +122,35 @@ a:hover { text-decoration: underline; }
 .mode-badge.sonos { background: var(--accent-dim); color: var(--accent); }
 .mode-badge.browser { background: rgba(100,140,255,0.15); color: #6699ff; }
 
+/* ── Volume slider in playbar ── */
+.playbar-volume {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 180px;
+  flex-shrink: 0;
+}
+.volume-icon {
+  font-size: 0.9rem;
+  flex-shrink: 0;
+  width: 20px;
+  text-align: center;
+}
+.volume-slider {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  appearance: auto;
+  cursor: pointer;
+}
+.volume-value {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  width: 28px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
 /* ============================================================
    MAIN CONTENT
    ============================================================ */
@@ -677,4 +706,35 @@ a:hover { text-decoration: underline; }
 .ep-ctrl-main:hover {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
+}
+
+/* ── Expanded player volume slider ── */
+.ep-volume {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px 20px 20px;
+  border-top: 1px solid var(--border);
+}
+.ep-volume-icon {
+  font-size: 1.1rem;
+  width: 24px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.ep-volume-slider {
+  flex: 1;
+  max-width: 300px;
+  height: 5px;
+  border-radius: 3px;
+  appearance: auto;
+  cursor: pointer;
+}
+.ep-volume-value {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  width: 32px;
+  text-align: center;
+  flex-shrink: 0;
 }
