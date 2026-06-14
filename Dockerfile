@@ -1,3 +1,5 @@
+## NOTE THIS IS OUT OF DATE FOR MY CURRENT LAN, I'm just running it on the bare metal because running uvicorn twice
+## for https and http on different ports
 FROM python:3.12-slim
 WORKDIR /app
 COPY requirements.txt .
