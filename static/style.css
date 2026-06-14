@@ -539,23 +539,12 @@ a:hover { text-decoration: underline; }
 .ep-mode-badge.sonos   { background: var(--accent-dim); color: var(--accent); }
 .ep-mode-badge.browser { background: rgba(100,140,255,0.15); color: #6699ff; }
 
-.ep-close-btn {
-  background: none;
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
-  border-radius: var(--radius);
-  padding: 8px 10px;
-  cursor: pointer;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.15s, color 0.15s;
-  margin-left: 16px;
+.ep-close-btn svg {
+  opacity: 0.6;
+  transition: opacity 0.15s;
 }
-.ep-close-btn:hover {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
+.ep-close-btn:hover svg {
+  opacity: 1;
 }
 
 /* ── Spectrum visualizer area ─────────────────── */
@@ -568,7 +557,8 @@ a:hover { text-decoration: underline; }
 }
 
 #ep-canvas {
-  display: block;
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
 }
