@@ -26,9 +26,24 @@ openssl req -x509 -newkey rsa:2048 \
   -nodes \
   -subj "/CN=10.0.1.50"
 
+# uvicorn main:app \
+#   --host 0.0.0.0 \
+#   --port 8000 \
+#   --reload \
+#   --ssl-keyfile key.pem \
+#   --ssl-certfile cert.pem
+
+
+# HTTP for sonos
 uvicorn main:app \
   --host 0.0.0.0 \
-  --port 8000 \
-  --reload \
+  --port 8000 &
+
+# HTTPS for user UI because mic access needs that.
+uvicorn main:app \
+  --host 0.0.0.0 \
+  --port 443 \
   --ssl-keyfile key.pem \
-  --ssl-certfile cert.pem
+  --ssl-certfile cert.pem &
+
+wait
