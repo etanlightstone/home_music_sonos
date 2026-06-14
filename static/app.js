@@ -278,12 +278,23 @@ function renderFileList(entries, isSearch) {
         return;
     }
 
+    let html = '';
+
+    if (!isSearch && currentBrowserPath) {
+        html = `
+        <div class="play-all-bar">
+            <span class="play-all-label">Play all</span>
+            <button class="btn-secondary play-all-browser-btn" data-path="${currentBrowserPath}" title="Play all tracks in browser">▶ Browser</button>
+            <button class="btn-primary play-all-sonos-btn" data-path="${currentBrowserPath}" title="Play all tracks on Sonos">▶ Sonos</button>
+        </div>`;
+    }
+
     const rows = entries.map(entry =>
         entry.is_directory
             ? renderFolderRow(entry, isSearch)
             : renderFileRow(entry)
     );
-    list.innerHTML = rows.join('');
+    list.innerHTML = html + rows.join('');
 
     // Attach click handlers for folder navigation
     list.querySelectorAll('.folder-name-link').forEach(link => {
@@ -331,6 +342,28 @@ function renderFileList(entries, isSearch) {
                 playFolderInBrowser(btn.dataset.path, btn.dataset.name);
             } else {
                 console.log('[Phase 4] Browser folder play:', btn.dataset.path);
+            }
+        });
+    });
+
+    list.querySelectorAll('.play-all-browser-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (window.playFolderInBrowser) {
+                const folderName = btn.dataset.path.split('/').pop() || 'this folder';
+                playFolderInBrowser(btn.dataset.path, folderName);
+            } else {
+                console.log('[Phase 4] Play all browser:', btn.dataset.path);
+            }
+        });
+    });
+
+    list.querySelectorAll('.play-all-sonos-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (window.playFolderOnSonos) {
+                const folderName = btn.dataset.path.split('/').pop() || 'this folder';
+                playFolderOnSonos(btn.dataset.path, folderName);
+            } else {
+                console.log('[Phase 4] Play all Sonos:', btn.dataset.path);
             }
         });
     });

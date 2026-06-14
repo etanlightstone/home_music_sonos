@@ -219,6 +219,20 @@ a:hover { text-decoration: underline; }
 .file-list { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 .file-list.hidden { display: none; }
 
+.play-all-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-hover);
+}
+.play-all-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
 .file-row {
   display: flex;
   align-items: center;
