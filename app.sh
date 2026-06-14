@@ -15,4 +15,11 @@ echo ""
 echo "Starting SonosWeb at http://0.0.0.0:8000"
 echo "Access from LAN at http://$(hostname -I | awk '{print $1}'):8000"
 echo ""
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+#uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+uvicorn main:app \
+  --host 0.0.0.0 \
+  --port 8000 \
+  --reload \
+  --ssl-keyfile key.pem \
+  --ssl-certfile cert.pem
