@@ -10,6 +10,7 @@ from routers import index_router
 from routers import proxy
 from routers import files as files_router
 from routers import sonos as sonos_router
+from routers import spotify as spotify_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -29,6 +30,18 @@ app.include_router(index_router.router,    prefix="/api/index",      tags=["inde
 app.include_router(proxy.router,           prefix="/api/proxy",      tags=["proxy"])
 app.include_router(files_router.router,    prefix="/api/files",      tags=["files"])
 app.include_router(sonos_router.router,    prefix="/api/sonos",      tags=["sonos"])
+app.include_router(spotify_router.router,  prefix="/api/spotify",    tags=["spotify"])
+
+# OAuth routes at root level (Spotify redirects back here)
+@app.get("/spotify/login")
+async def spotify_login_redirect():
+    from routers.spotify import spotify_login
+    return spotify_login()
+
+@app.get("/spotify/callback")
+async def spotify_callback_handler(code: str = None, error: str = None):
+    from routers.spotify import spotify_callback
+    return spotify_callback(code=code, error=error)
 
 @app.get("/")
 async def index(request: Request):

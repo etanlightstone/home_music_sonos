@@ -6,14 +6,17 @@ from database import get_db
 router = APIRouter()
 
 DEFAULTS = {
-    "sonos_ip":       "10.0.1.90",
-    "server_type":    "sftp",
-    "server_host":    "",
-    "server_port":    "22",
-    "server_user":    "",
+    "sonos_ip":        "10.0.1.90",
+    "server_type":     "sftp",
+    "server_host":     "",
+    "server_port":     "22",
+    "server_user":     "",
     "server_password": "",
-    "server_path":    "/",
-    "webserver_host": "",
+    "server_path":     "/",
+    "webserver_host":  "",
+    "spotify_client_id":     "",
+    "spotify_client_secret": "",
+    "spotify_redirect_uri":  "http://localhost:8000/spotify/callback",
 }
 
 class SettingsUpdate(BaseModel):
@@ -25,6 +28,9 @@ class SettingsUpdate(BaseModel):
     server_password: Optional[str] = None
     server_path:     Optional[str] = None
     webserver_host:  Optional[str] = None
+    spotify_client_id:     Optional[str] = None
+    spotify_client_secret: Optional[str] = None
+    spotify_redirect_uri:  Optional[str] = None
 
 @router.get("")
 def get_settings():

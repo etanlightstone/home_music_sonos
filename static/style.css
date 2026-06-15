@@ -841,3 +841,50 @@ a:hover { text-decoration: underline; }
   text-align: center;
   flex-shrink: 0;
 }
+
+/* ============================================================
+   SPOTIFY TAB — Phase 1 (auth prompt + status badge)
+   ============================================================ */
+
+.spotify-auth-prompt {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+}
+.spotify-auth-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 40px 48px;
+  max-width: 480px;
+  text-align: center;
+}
+.spotify-logo   { font-size: 2.5rem; }
+.spotify-auth-card h2 { margin: 16px 0 10px; font-size: 1.3rem; }
+.spotify-auth-card p  { color: var(--text-secondary); font-size: 0.88rem; line-height: 1.7; margin-bottom: 10px; }
+.auth-hint      { font-size: 0.8rem !important; color: var(--text-muted) !important; }
+.auth-hint code { background: var(--bg-tertiary); padding: 2px 6px; border-radius: 3px; font-size: 0.78rem; }
+
+.btn-spotify-login {
+  display: inline-block;
+  margin-top: 20px;
+  background: #1db954;
+  color: #000;
+  font-weight: 700;
+  padding: 12px 28px;
+  border-radius: 24px;
+  font-size: 0.95rem;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+.btn-spotify-login:hover { background: #1aa34a; text-decoration: none; }
+
+.spotify-status-badge {
+  font-size: 0.8rem;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-weight: 600;
+}
+.spotify-status-badge.connected    { background: rgba(29,185,84,0.2); color: #1db954; }
+.spotify-status-badge.disconnected { background: var(--bg-tertiary); color: var(--text-muted); }

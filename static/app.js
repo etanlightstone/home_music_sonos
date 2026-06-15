@@ -1146,3 +1146,68 @@ function drawSpectrumBars(dataArray, bufferLength) {
         epCtx.fillRect(x, epCanvas.height - barHeight, Math.max(1, barWidth), barHeight);
     }
 }
+
+/* ============================================================
+   SPOTIFY — Phase 1: Tab init, auth check, settings status
+   ============================================================ */
+
+document.addEventListener('DOMContentLoaded', initSpotifyTab);
+
+async function initSpotifyTab() {
+    await checkSpotifyAuth();
+
+    // Handle redirect back from Spotify OAuth
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('spotify_auth') === 'success') {
+        showToast('Spotify connected!', 'success');
+        if (params.get('tab') === 'spotify') switchTab('spotify');
+        // Clean URL
+        history.replaceState({}, '', '/');
+    } else if (params.get('spotify_auth') === 'error') {
+        showToast('Spotify auth failed. Check credentials in Settings.', 'error');
+        history.replaceState({}, '', '/');
+    }
+
+    // Logout button
+    document.getElementById('spotify-logout-btn')?.addEventListener('click', async () => {
+        await fetch('/api/spotify/logout', { method: 'POST' });
+        showToast('Spotify disconnected', 'success');
+        checkSpotifyAuth();
+    });
+}
+
+async function checkSpotifyAuth() {
+    try {
+        const res  = await fetch('/api/spotify/auth-status');
+        const data = await res.json();
+        const auth = data.authenticated;
+
+        // Spotify tab content
+        document.getElementById('spotify-auth-prompt')?.classList.toggle('hidden', auth);
+        document.getElementById('spotify-browser')?.classList.toggle('hidden', !auth);
+
+        // Settings tab auth state
+        const badge = document.getElementById('spotify-auth-badge');
+        if (badge) {
+            badge.textContent = auth ? 'Connected' : 'Not connected';
+            badge.className = `spotify-status-badge ${auth ? 'connected' : 'disconnected'}`;
+        }
+        document.getElementById('spotify-login-link')?.classList.toggle('hidden', auth);
+        document.getElementById('spotify-logout-btn')?.classList.toggle('hidden', !auth);
+
+        // Show redirect URI in auth prompt
+        const uriDisplay = document.getElementById('redirect-uri-display');
+        if (uriDisplay) {
+            const settings = await fetch('/api/settings').then(r => r.json());
+            uriDisplay.textContent = settings.spotify_redirect_uri || 'http://localhost:8000/spotify/callback';
+        }
+
+        return auth;
+    } catch (err) {
+        console.error('[Spotify] Auth check failed:', err);
+        return false;
+    }
+}
+
+// Expose so Phase 2 can call it after a fresh auth
+window.checkSpotifyAuth = checkSpotifyAuth;
