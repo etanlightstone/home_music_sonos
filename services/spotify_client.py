@@ -242,6 +242,8 @@ def get_artist_albums(artist_id: str) -> list[dict]:
         timeout=15,
     )
     if resp.status_code != 200:
+        import sys
+        print(f"[Spotify] get_artist_albums failed: {resp.status_code} {resp.text[:500]}", file=sys.stderr)
         return []
     raw = resp.json()
     seen = set()
