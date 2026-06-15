@@ -237,13 +237,11 @@ def get_artist_albums(artist_id: str) -> list[dict]:
         return []
     # Use raw URL to prevent requests from URL-encoding the comma in include_groups
     resp = requests.get(
-        f"https://api.spotify.com/v1/artists/{artist_id}/albums?include_groups=album,single&limit=20&offset=0",
+        f"https://api.spotify.com/v1/artists/{artist_id}/albums?include_groups=album,single&limit=10&offset=0",
         headers={"Authorization": f"Bearer {token}"},
         timeout=15,
     )
     if resp.status_code != 200:
-        import sys
-        print(f"[Spotify] get_artist_albums failed: {resp.status_code} {resp.text[:500]}", file=sys.stderr)
         return []
     raw = resp.json()
     seen = set()
