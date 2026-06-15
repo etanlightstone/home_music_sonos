@@ -232,10 +232,19 @@ def search_spotify(q: str, types: str = "artist,album,track", limit: int = 10) -
 
 
 def get_artist_albums(artist_id: str) -> list[dict]:
-    sp = make_client()
-    if not sp:
+    token = get_valid_access_token()
+    if not token:
         return []
-    raw = sp.artist_albums(artist_id, include_groups="album,single")
+    # Use the correct API parameter "market" instead of spotipy's outdated "country"
+    resp = requests.get(
+        f"https://api.spotify.com/v1/artists/{artist_id}/albums",
+        headers={"Authorization": f"Bearer {token}"},
+        params={"include_groups": "album,single", "market": "from_token", "limit": 20, "offset": 0},
+        timeout=15,
+    )
+    if resp.status_code != 200:
+        return []
+    raw = resp.json()
     seen = set()
     albums = []
     for a in (raw.get("items") or []):
