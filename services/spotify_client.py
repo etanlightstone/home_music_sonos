@@ -302,7 +302,7 @@ def get_user_playlists() -> list[dict]:
             "id":          p["id"],
             "name":        p["name"],
             "description": p.get("description", ""),
-            "track_count": p["tracks"]["total"],
+            "track_count": (p.get("tracks") or {}).get("total", 0),
             "image_url":   _normalize_image(p.get("images", [])),
             "uri":         p["uri"],
         }
