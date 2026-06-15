@@ -235,7 +235,7 @@ def get_artist_albums(artist_id: str) -> list[dict]:
     sp = make_client()
     if not sp:
         return []
-    raw = sp.artist_albums(artist_id, album_type="album,single", limit=50)
+    raw = sp.artist_albums(artist_id, include_groups="album,single", limit=50)
     seen = set()
     albums = []
     for a in (raw.get("items") or []):
