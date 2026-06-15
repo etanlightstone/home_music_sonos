@@ -230,6 +230,8 @@ def unpin_item(spotify_id: str):
     conn = get_db()
     with conn:
         conn.execute("DELETE FROM spotify_pins WHERE spotify_id=?", (spotify_id,))
+        conn.execute("DELETE FROM spotify_pins WHERE artist_id=?", (spotify_id,))
+        conn.execute("DELETE FROM spotify_pins WHERE album_id=?", (spotify_id,))
     conn.close()
     return {"status": "unpinned", "spotify_id": spotify_id}
 
