@@ -115,12 +115,41 @@
         </div>
       </div>
 
-      <!-- Main Spotify browser — shown when authenticated (Phase 2 populates this) -->
+      <!-- Main Spotify browser — shown when authenticated -->
       <div id="spotify-browser" class="hidden">
-        <!-- Phases 2 & 3 build this out -->
-        <p style="color: var(--text-muted); padding: 40px; text-align: center;">
-          Spotify browser coming in Phase 2.
-        </p>
+
+        <!-- Top controls row: view toggle + search mode toggle -->
+        <div class="spotify-top-controls">
+          <div class="spotify-view-toggle">
+            <button class="sp-toggle-btn sp-toggle-active" id="sp-view-artists" data-view="artists">
+              Artists
+            </button>
+            <button class="sp-toggle-btn" id="sp-view-playlists" data-view="playlists">
+              Playlists
+            </button>
+          </div>
+          <div class="spotify-search-area">
+            <input type="text" id="sp-search-input" class="search-input"
+                   placeholder="Search…" autocomplete="off">
+            <div class="search-filters">
+              <label><input type="radio" name="sp-search-scope" value="library" checked> Library</label>
+              <label><input type="radio" name="sp-search-scope" value="spotify"> All Spotify</label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Breadcrumb -->
+        <div id="sp-breadcrumb" class="breadcrumb hidden"></div>
+
+        <!-- File list (reuses same CSS as mp3 browser) -->
+        <div id="sp-file-list" class="file-list hidden"></div>
+
+        <!-- Empty state -->
+        <div id="sp-empty-state" class="empty-state hidden">
+          <p>📌 No Spotify items pinned yet.</p>
+          <p>Use the search bar to find artists, albums, or tracks and pin them to your library.</p>
+        </div>
+
       </div>
 
     </div>

@@ -161,3 +161,145 @@ async def player_state():
     loop = asyncio.get_event_loop()
     state = await loop.run_in_executor(None, sc.get_playback_state)
     return state or {"is_playing": False, "title": "", "artist": ""}
+
+
+# ── Pin/Unpin endpoints ──────────────────────────────────────
+
+class PinRequest(BaseModel):
+    item_type:   str
+    spotify_id:  str
+    name:        str
+    artist_id:   Optional[str] = None
+    artist_name: Optional[str] = None
+    album_id:    Optional[str] = None
+    album_name:  Optional[str] = None
+    track_number: Optional[int] = None
+    disc_number:  Optional[int] = 1
+    duration_ms:  Optional[int] = None
+    image_url:    Optional[str] = None
+
+
+@router.post("/pin")
+async def pin_item(req: PinRequest):
+    from database import get_db
+    conn = get_db()
+
+    if req.item_type == "album":
+        loop = asyncio.get_event_loop()
+        tracks = await loop.run_in_executor(None, sc.get_album_tracks, req.spotify_id)
+        with conn:
+            conn.execute("""
+                INSERT OR IGNORE INTO spotify_pins
+                  (item_type, spotify_id, name, artist_id, artist_name,
+                   album_id, album_name, image_url)
+                VALUES ('album', ?, ?, ?, ?, ?, ?, ?)
+            """, (req.spotify_id, req.name, req.artist_id, req.artist_name,
+                  req.spotify_id, req.name, req.image_url))
+            for t in tracks:
+                conn.execute("""
+                    INSERT OR IGNORE INTO spotify_pins
+                      (item_type, spotify_id, name, artist_id, artist_name,
+                       album_id, album_name, track_number, disc_number, duration_ms, image_url)
+                    VALUES ('track', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (t["id"], t["name"], t.get("artist_id"), t.get("artist_name"),
+                      t["album_id"], t["album_name"],
+                      t.get("track_number"), t.get("disc_number", 1),
+                      t.get("duration_ms"), t.get("image_url")))
+        conn.close()
+        return {"status": "pinned", "type": "album", "tracks_added": len(tracks)}
+
+    else:
+        with conn:
+            conn.execute("""
+                INSERT OR IGNORE INTO spotify_pins
+                  (item_type, spotify_id, name, artist_id, artist_name,
+                   album_id, album_name, track_number, disc_number, duration_ms, image_url)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (req.item_type, req.spotify_id, req.name,
+                  req.artist_id, req.artist_name,
+                  req.album_id, req.album_name,
+                  req.track_number, req.disc_number or 1,
+                  req.duration_ms, req.image_url))
+        conn.close()
+        return {"status": "pinned", "type": req.item_type}
+
+
+@router.delete("/pin/{spotify_id}")
+def unpin_item(spotify_id: str):
+    from database import get_db
+    conn = get_db()
+    with conn:
+        conn.execute("DELETE FROM spotify_pins WHERE spotify_id=?", (spotify_id,))
+    conn.close()
+    return {"status": "unpinned", "spotify_id": spotify_id}
+
+
+@router.get("/pin/check/{spotify_id}")
+def check_pinned(spotify_id: str):
+    from database import get_db
+    conn = get_db()
+    row = conn.execute(
+        "SELECT id, item_type FROM spotify_pins WHERE spotify_id=? LIMIT 1",
+        (spotify_id,)
+    ).fetchone()
+    conn.close()
+    return {"pinned": row is not None, "type": dict(row)["item_type"] if row else None}
+
+
+# ── Pinned library browse endpoints ─────────────────────────
+
+@router.get("/pins/artists")
+def pinned_artists():
+    from database import get_db
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT spotify_id, name, image_url FROM spotify_pins WHERE item_type='artist'
+        UNION
+        SELECT DISTINCT artist_id AS spotify_id, artist_name AS name, image_url
+          FROM spotify_pins WHERE item_type IN ('album','track') AND artist_id IS NOT NULL
+        ORDER BY name COLLATE NOCASE
+    """).fetchall()
+    conn.close()
+    seen = set()
+    artists = []
+    for r in rows:
+        d = dict(r)
+        if d["spotify_id"] not in seen:
+            seen.add(d["spotify_id"])
+            artists.append(d)
+    return {"artists": artists}
+
+
+@router.get("/pins/albums/{artist_id}")
+def pinned_albums(artist_id: str):
+    from database import get_db
+    conn = get_db()
+    artist_pin = conn.execute(
+        "SELECT * FROM spotify_pins WHERE item_type='artist' AND spotify_id=?",
+        (artist_id,)
+    ).fetchone()
+    rows = conn.execute("""
+        SELECT DISTINCT album_id AS spotify_id, album_name AS name, image_url
+          FROM spotify_pins WHERE artist_id=? AND album_id IS NOT NULL
+        ORDER BY name COLLATE NOCASE
+    """, (artist_id,)).fetchall()
+    conn.close()
+    return {
+        "artist_id":    artist_id,
+        "albums":       [dict(r) for r in rows],
+        "has_artist_pin": artist_pin is not None,
+        "live_browse_available": artist_pin is not None and len(rows) == 0,
+    }
+
+
+@router.get("/pins/tracks/{album_id}")
+def pinned_tracks(album_id: str):
+    from database import get_db
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT * FROM spotify_pins
+          WHERE album_id=? AND item_type='track'
+          ORDER BY disc_number, track_number
+    """, (album_id,)).fetchall()
+    conn.close()
+    return {"album_id": album_id, "tracks": [dict(r) for r in rows]}
