@@ -1497,14 +1497,13 @@ async function loadSpotifyAlbumsForArtist(artistId, artistName) {
                 const pinData = await pinRes.json();
                 rows.push(renderSpAlbumRow({...al, spotify_id: al.id, artist_id: artistId, artist_name: artistName}, pinData.pinned));
             }
-        } else if (albums.length === 0) {
-            rows.push('<div class="loading-row muted-row">No albums pinned for this artist</div>');
-        } else {
+        } else if (albums.length > 0) {
             for (const al of albums) {
                 const pinRes = await fetch(`/api/spotify/pin/check/${encodeURIComponent(al.spotify_id)}`);
                 const pinData = await pinRes.json();
                 rows.push(renderSpAlbumRow(al, pinData.pinned));
             }
+            rows.push(`<button class="sp-show-all-btn" data-artist-id="${escHtml(artistId)}" data-artist-name="${escHtml(artistName)}">Show all albums</button>`);
         }
 
         if (rows.length > 0) {
@@ -1514,7 +1513,42 @@ async function loadSpotifyAlbumsForArtist(artistId, artistName) {
                 list.classList.remove('hidden');
                 document.getElementById('sp-empty-state')?.classList.add('hidden');
                 attachSpListeners();
+
+                const showAllBtn = list.querySelector('.sp-show-all-btn');
+                if (showAllBtn) {
+                    showAllBtn.addEventListener('click', () => loadSpotifyAllAlbums(artistId, artistName));
+                }
             }
+        } else {
+            spShowList([]);
+        }
+    } catch (err) {
+        document.getElementById('sp-file-list').innerHTML =
+            '<div class="loading-row error-row">Failed to load albums</div>';
+    }
+}
+
+async function loadSpotifyAllAlbums(artistId, artistName) {
+    sp.breadcrumb = [{ label: artistName, action: () => loadSpotifyAlbumsForArtist(artistId, artistName) }];
+    renderSpBreadcrumb();
+    spSetLoading();
+    try {
+        const rows = [];
+        const liveRes  = await fetch(`/api/spotify/artist/${encodeURIComponent(artistId)}/albums`);
+        const liveData = await liveRes.json();
+        const liveAlbums = liveData.albums || [];
+        for (const al of liveAlbums) {
+            const pinRes = await fetch(`/api/spotify/pin/check/${encodeURIComponent(al.id)}`);
+            const pinData = await pinRes.json();
+            rows.push(renderSpAlbumRow({...al, spotify_id: al.id, artist_id: artistId, artist_name: artistName}, pinData.pinned));
+        }
+
+        const list = document.getElementById('sp-file-list');
+        if (list) {
+            list.innerHTML = rows.join('');
+            list.classList.remove('hidden');
+            document.getElementById('sp-empty-state')?.classList.add('hidden');
+            attachSpListeners();
         } else {
             spShowList([]);
         }

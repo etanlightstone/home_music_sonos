@@ -290,7 +290,7 @@ def pinned_albums(artist_id: str):
         "artist_id":    artist_id,
         "albums":       [dict(r) for r in rows],
         "has_artist_pin": artist_pin is not None,
-        "live_browse_available": artist_pin is not None and len(rows) == 0,
+        "live_browse_available": len(rows) == 0,
     }
 
 
