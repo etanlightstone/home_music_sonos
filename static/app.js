@@ -225,7 +225,7 @@ function renderBreadcrumb(path) {
     }
 
     const parts = path === '/' ? [] : path.replace(/^\//, '').split('/');
-    let html = '<a href="#" class="crumb-link" data-path="/">Home</a>';
+    let html = '<a href="#" class="crumb-link crumb-home" data-path="/"><svg class="crumb-home-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3L2 12h3v8h6v-6h2v6h6v-8h3L12 3z"/></svg> Home</a>';
 
     let builtPath = '';
     parts.forEach((part, i) => {
@@ -357,6 +357,15 @@ function renderFileList(entries, isSearch) {
         });
     });
 
+    // Clicking anywhere on a file row triggers Sonos play
+    list.querySelectorAll('.file-row-music').forEach(row => {
+        row.addEventListener('click', (e) => {
+            if (e.target.closest('.file-actions, .folder-name-link')) return;
+            const sonosBtn = row.querySelector('.sonos-play-btn');
+            if (sonosBtn) sonosBtn.click();
+        });
+    });
+
     list.querySelectorAll('.play-all-sonos-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             if (window.playFolderOnSonos) {
@@ -416,12 +425,20 @@ function renderFileRow(entry) {
 
 function initSearch() {
     const input = document.getElementById('search-input');
+    const clearBtn = document.getElementById('clear-search-btn');
     if (!input) return;
 
     let searchTimer = null;
 
+    function updateClearBtn() {
+        if (clearBtn) {
+            clearBtn.classList.toggle('hidden', !input.value.trim());
+        }
+    }
+
     input.addEventListener('input', () => {
         clearTimeout(searchTimer);
+        updateClearBtn();
         const q = input.value.trim();
         if (!q) {
             // Clear search: go back to current directory
@@ -434,8 +451,16 @@ function initSearch() {
     input.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             input.value = '';
+            updateClearBtn();
             exitSearch();
         }
+    });
+
+    clearBtn?.addEventListener('click', () => {
+        input.value = '';
+        updateClearBtn();
+        exitSearch();
+        input.focus();
     });
 
     // Re-run search when filter type changes

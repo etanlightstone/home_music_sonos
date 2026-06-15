@@ -203,15 +203,30 @@ a:hover { text-decoration: underline; }
   margin-bottom: 16px;
   flex-wrap: wrap;
 }
-.search-input {
+.search-input-wrap {
+  position: relative;
   flex: 1;
   min-width: 200px;
+}
+.search-input-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  color: #fff;
+  opacity: 0.7;
+  pointer-events: none;
+}
+.search-input {
+  width: 100%;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 8px 14px;
+  padding: 12px 16px 12px 38px;
   color: var(--text-primary);
-  font-size: 0.95rem;
+  font-size: 1.05rem;
   outline: none;
   transition: border-color 0.15s;
 }
@@ -219,18 +234,36 @@ a:hover { text-decoration: underline; }
 .search-filters { display: flex; gap: 12px; align-items: center; flex-shrink: 0; }
 .search-filters label {
   display: flex; align-items: center; gap: 5px;
-  font-size: 0.85rem; color: var(--text-secondary);
+  font-size: 0.95rem; color: var(--text-secondary);
   cursor: pointer;
 }
 .search-filters input[type="radio"] { accent-color: var(--accent); }
+
+.clear-search-btn {
+  background: none;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  padding: 8px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.clear-search-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+}
 
 /* ============================================================
    BREADCRUMB
    ============================================================ */
 .breadcrumb {
-  font-size: 0.85rem;
+  font-size: 0.95rem;
   color: var(--text-secondary);
-  margin-bottom: 12px;
+  margin-bottom: 14px;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -242,6 +275,26 @@ a:hover { text-decoration: underline; }
 .breadcrumb .crumb-sep { color: var(--text-muted); }
 .breadcrumb .crumb-current { color: var(--text-primary); }
 
+.crumb-home {
+  color: #fff !important;
+  font-weight: 700;
+  font-size: 1.05rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  margin: -6px -10px;
+  border-radius: var(--radius);
+  transition: background 0.15s;
+}
+.crumb-home:hover {
+  background: var(--bg-tertiary) !important;
+  text-decoration: none !important;
+}
+.crumb-home-icon {
+  flex-shrink: 0;
+}
+
 /* ============================================================
    FILE LIST
    ============================================================ */
@@ -252,12 +305,12 @@ a:hover { text-decoration: underline; }
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-hover);
 }
 .play-all-label {
-  font-size: 0.82rem;
+  font-size: 0.9rem;
   font-weight: 600;
   color: var(--text-secondary);
 }
@@ -266,23 +319,24 @@ a:hover { text-decoration: underline; }
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 14px;
+  padding: 14px 16px;
   border-bottom: 1px solid var(--border);
   transition: background 0.1s;
 }
 .file-row:last-child { border-bottom: none; }
 .file-row:hover { background: var(--bg-hover); }
+.file-row-music { cursor: pointer; }
 
 .file-icon {
-  font-size: 1rem;
+  font-size: 1.15rem;
   flex-shrink: 0;
-  width: 28px;
+  width: 30px;
   text-align: center;
 }
 .ext-badge {
-  font-size: 0.65rem;
+  font-size: 0.7rem;
   font-family: var(--font-mono);
-  padding: 2px 5px;
+  padding: 3px 6px;
   border-radius: 3px;
   font-weight: 700;
   text-transform: uppercase;
@@ -298,7 +352,7 @@ a:hover { text-decoration: underline; }
 .file-name {
   flex: 1;
   min-width: 0;
-  font-size: 0.9rem;
+  font-size: 1rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -307,7 +361,7 @@ a:hover { text-decoration: underline; }
 .folder-row .file-name:hover { color: var(--accent); }
 
 .file-meta {
-  font-size: 0.78rem;
+  font-size: 0.85rem;
   color: var(--text-muted);
   white-space: nowrap;
   flex-shrink: 0;
@@ -482,7 +536,7 @@ a:hover { text-decoration: underline; }
 
 /* Search result parent-path hint */
 .file-meta.path-hint {
-  font-size: 0.75rem;
+  font-size: 0.82rem;
   color: var(--text-muted);
   font-style: italic;
 }
@@ -498,24 +552,22 @@ a:hover { text-decoration: underline; }
 
 /* ── Expand icon button on the compact playbar ── */
 .expand-btn {
-  margin-left: auto;
   flex-shrink: 0;
-  background: none;
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
+  background: rgba(29,185,84,0.12);
+  border: 1px solid rgba(29,185,84,0.3);
   border-radius: var(--radius);
-  padding: 6px 10px;
+  padding: 5px 8px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition: background 0.15s, border-color 0.15s;
   line-height: 1;
+  min-width: 100px;
 }
 .expand-btn:hover {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-  border-color: var(--border-hover);
+  background: rgba(29,185,84,0.25);
+  border-color: var(--accent);
 }
 
 /* ── Expanded player overlay ──────────────────── */
@@ -537,6 +589,7 @@ a:hover { text-decoration: underline; }
 }
 .expanded-player.ep-open {
   transform: translateY(0);
+  z-index: 101;
 }
 
 /* ── Expanded player header ─────────────────────── */
@@ -582,12 +635,22 @@ a:hover { text-decoration: underline; }
 .ep-mode-badge.sonos   { background: var(--accent-dim); color: var(--accent); }
 .ep-mode-badge.browser { background: rgba(100,140,255,0.15); color: #6699ff; }
 
-.ep-close-btn svg {
-  opacity: 0.6;
-  transition: opacity 0.15s;
+.ep-header-close-btn {
+  background: none;
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s;
 }
-.ep-close-btn:hover svg {
-  opacity: 1;
+.ep-header-close-btn:hover {
+  background: rgba(255,255,255,0.12);
+  border-color: rgba(255,255,255,0.6);
 }
 
 /* ── Spectrum visualizer area ─────────────────── */
