@@ -235,11 +235,10 @@ def get_artist_albums(artist_id: str) -> list[dict]:
     token = get_valid_access_token()
     if not token:
         return []
-    # Use the correct API parameter "market" instead of spotipy's outdated "country"
+    # Use raw URL to prevent requests from URL-encoding the comma in include_groups
     resp = requests.get(
-        f"https://api.spotify.com/v1/artists/{artist_id}/albums",
+        f"https://api.spotify.com/v1/artists/{artist_id}/albums?include_groups=album,single&limit=20&offset=0",
         headers={"Authorization": f"Bearer {token}"},
-        params={"include_groups": "album,single", "market": "from_token", "limit": 20, "offset": 0},
         timeout=15,
     )
     if resp.status_code != 200:
