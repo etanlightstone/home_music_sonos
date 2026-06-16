@@ -197,11 +197,6 @@ async def debug_sonos():
 
 # ── Spotify-on-Sonos playback ─────────────────────────────────
 
-def _spotify_uri_to_sonos(spotify_track_uri: str, sid: int = 9, flags: int = 8224, sn: int = 7) -> str:
-    track_id = spotify_track_uri.split(":")[-1]
-    return f"x-sonos-spotify:spotify:track:{track_id}?sid={sid}&flags={flags}&sn={sn}"
-
-
 class PlaySpotifyTrackOnSonosRequest(BaseModel):
     spotify_uri: str
     name:        str = ""
@@ -216,23 +211,18 @@ class PlaySpotifyAlbumOnSonosRequest(BaseModel):
 @router.post("/play-spotify-track")
 async def play_spotify_track_on_sonos(req: PlaySpotifyTrackOnSonosRequest):
     sonos_ip  = _get_sonos_ip()
-    sonos_uri = _spotify_uri_to_sonos(req.spotify_uri)
     title     = req.name or req.spotify_uri.split(":")[-1]
 
     print(f"[DEBUG play_spotify_track_on_sonos] spotify_uri={req.spotify_uri}")
-    print(f"[DEBUG play_spotify_track_on_sonos] sonos_uri={sonos_uri}")
     print(f"[DEBUG play_spotify_track_on_sonos] sonos_ip={sonos_ip}")
     print(f"[DEBUG play_spotify_track_on_sonos] title={title}")
 
-    # Use queue-based approach (add_uri_to_queue + play_from_queue) instead of
-    # play_uri(), because play_uri() uses SetAVTransportURI which doesn't
-    # transition from STOPPED for Spotify music-service URIs.
     loop   = asyncio.get_event_loop()
-    result = await loop.run_in_executor(None, sc.play_queue, sonos_ip, [sonos_uri], [title])
+    result = await loop.run_in_executor(None, sc.play_spotify_uri, sonos_ip, req.spotify_uri, title)
 
     print(f"[DEBUG play_spotify_track_on_sonos] result={result}")
 
-    return {**result, "spotify_uri": req.spotify_uri, "sonos_uri": sonos_uri, "title": title}
+    return {**result, "spotify_uri": req.spotify_uri, "title": title}
 
 
 @router.post("/play-spotify-album")
@@ -241,14 +231,13 @@ async def play_spotify_album_on_sonos(req: PlaySpotifyAlbumOnSonosRequest):
         return {"status": "error", "message": "No tracks provided"}
 
     sonos_ip   = _get_sonos_ip()
-    sonos_uris = [_spotify_uri_to_sonos(u) for u in req.track_uris]
-    titles     = req.names if req.names else [f"Track {i+1}" for i in range(len(sonos_uris))]
+    titles     = req.names if req.names else [f"Track {i+1}" for i in range(len(req.track_uris))]
 
     loop   = asyncio.get_event_loop()
-    result = await loop.run_in_executor(None, sc.play_queue, sonos_ip, sonos_uris, titles)
+    result = await loop.run_in_executor(None, sc.play_spotify_queue, sonos_ip, req.track_uris, titles)
     return {
         **result,
         "album": req.album_name,
-        "track_count": len(sonos_uris),
+        "track_count": len(req.track_uris),
         "first_title": titles[0] if titles else "",
     }
