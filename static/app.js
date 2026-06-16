@@ -1036,6 +1036,7 @@ function syncEpTrackInfo() {
         syncEpPlayPauseIcon();
     };
     window._patchedUpdateNowPlaying = patched;
+    window.updateNowPlaying = patched;
 })();
 
 
@@ -1979,6 +1980,10 @@ async function spotifyPlaySonos(context, id, uri, name) {
                 return;
             }
             playback.isPaused = false;
+            playback.sonosQueue = (data.titles || []).map((title, i) => ({
+                title,
+                uri: data.uris && data.uris[i] ? data.uris[i] : null,
+            }));
             updateNowPlaying(data.first_title || name, 'spotify-sonos');
             setPlayPauseBtn(true);
             startSpotifySonosPoller();
@@ -2012,6 +2017,10 @@ async function spotifyPlaySonos(context, id, uri, name) {
             });
             const data = await res.json();
             playback.isPaused = false;
+            playback.sonosQueue = (data.titles || []).map((title, i) => ({
+                title,
+                uri: data.uris && data.uris[i] ? data.uris[i] : null,
+            }));
             updateNowPlaying(data.first_title || name, 'spotify-sonos');
             setPlayPauseBtn(true);
             startSpotifySonosPoller();
@@ -2036,6 +2045,10 @@ async function spotifyPlaySonos(context, id, uri, name) {
             });
             const qData = await qRes.json();
             playback.isPaused = false;
+            playback.sonosQueue = (qData.titles || []).map((title, i) => ({
+                title,
+                uri: qData.uris && qData.uris[i] ? qData.uris[i] : null,
+            }));
             updateNowPlaying(qData.first_title || name, 'spotify-sonos');
             setPlayPauseBtn(true);
             startSpotifySonosPoller();
@@ -2207,17 +2220,40 @@ async function syncSpotifySonosState() {
     try {
         const res  = await fetch('/api/sonos/state');
         const data = await res.json();
-        const title = data.title || playback.currentTitle;
+        const sonosTitle = data.title || '';
+        const sonosUri   = data.uri || '';
+        const tracknum   = data.tracknum || '';
+        const isPlaying  = data.state === 'PLAYING';
+        const isStopped  = data.state === 'STOPPED' || data.state === 'NO_MEDIA_PRESENT';
+
+        let title = sonosTitle;
+
+        if (playback.sonosQueue.length > 0) {
+            if (sonosUri) {
+                const uriIdx = playback.sonosQueue.findIndex(q => q.uri && sonosUri.includes(q.uri));
+                if (uriIdx !== -1) {
+                    title = playback.sonosQueue[uriIdx].title;
+                }
+            }
+            if (!title && tracknum) {
+                const idx = parseInt(tracknum, 10) - 1;
+                if (idx >= 0 && idx < playback.sonosQueue.length) {
+                    title = playback.sonosQueue[idx].title;
+                }
+            }
+        } else if (!sonosTitle) {
+            title = playback.currentTitle;
+        }
+
         if (title && title !== playback.currentTitle) {
             updateNowPlaying(title, 'spotify-sonos');
         }
-        const isPlaying = data.state === 'PLAYING';
         playback.isPaused = (data.state === 'PAUSED_PLAYBACK');
         setPlayPauseBtn(isPlaying);
         if (data.volume !== undefined && data.volume !== playback.volume) {
             setVolumeUI(data.volume);
         }
-        if (data.state === 'STOPPED' || data.state === 'NO_MEDIA_PRESENT') {
+        if (isStopped) {
             stopSpotifySonosPoller();
         }
     } catch (err) {
@@ -2255,4 +2291,5 @@ async function syncSpotifySonosState() {
         }
     };
     window._patchedUpdateNowPlaying = newPatch;
+    window.updateNowPlaying = newPatch;
 })();

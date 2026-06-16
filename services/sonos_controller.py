@@ -271,10 +271,13 @@ def play_spotify_queue(sonos_ip: str, spotify_uris: list, titles: list = None) -
         except Exception as exc:
             print(f"[DEBUG play_spotify_queue] could not verify state: {exc!r}")
 
+        resolved_titles = titles or [f"Track {i+1}" for i in range(len(spotify_uris))]
         result = {
             "status": "playing",
             "track_count": len(spotify_uris),
-            "first_title": titles[0] if titles else spotify_uris[0].split(":")[-1],
+            "first_title": resolved_titles[0] if resolved_titles else spotify_uris[0].split(":")[-1],
+            "titles": resolved_titles,
+            "uris": [_spotify_sonos_uri(su) for su in spotify_uris],
         }
         print(f"[DEBUG play_spotify_queue] result={result}")
         return result
