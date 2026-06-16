@@ -1579,8 +1579,8 @@ async function loadSpotifyTracksForAlbum(albumId, albumName, artistId, artistNam
             const playAllHtml = `
             <div class="play-all-bar">
                 <span class="play-all-label">Play all</span>
-                <button class="btn-secondary sp-play-all-browser-btn" data-id="${escHtml(albumId)}" data-name="${escHtml(albumName)}" title="Queue whole album in browser">▶ Browser</button>
-                <button class="btn-primary sp-play-all-sonos-btn" data-id="${escHtml(albumId)}" data-name="${escHtml(albumName)}" title="Queue whole album on Sonos">▶ Sonos</button>
+                <button class="btn-secondary sp-play-all-browser-btn" data-context="album" data-id="${escHtml(albumId)}" data-name="${escHtml(albumName)}" title="Queue whole album in browser">▶ Browser</button>
+                <button class="btn-primary sp-play-all-sonos-btn" data-context="album" data-id="${escHtml(albumId)}" data-name="${escHtml(albumName)}" title="Queue whole album on Sonos">▶ Sonos</button>
             </div>`;
             rows.push(playAllHtml);
             for (const t of tracks) {
@@ -1638,12 +1638,23 @@ async function loadSpotifyPlaylistTracks(playlistId, playlistName) {
         const res  = await fetch(`/api/spotify/playlist/${encodeURIComponent(playlistId)}/tracks`);
         const data = await res.json();
         const tracks = data.tracks || [];
-        const rows = await Promise.all(tracks.map(async t => {
-            const pinRes  = await fetch(`/api/spotify/pin/check/${encodeURIComponent(t.id)}`);
-            const pinData = await pinRes.json();
-            return renderSpTrackRow({...t, spotify_id: t.id}, pinData.pinned);
-        }));
-        spShowList(rows.length ? rows : ['<div class="loading-row muted-row">No tracks</div>']);
+        const rows = [];
+        if (tracks.length) {
+            rows.push(`
+            <div class="play-all-bar">
+                <span class="play-all-label">Play all</span>
+                <button class="btn-secondary sp-play-all-browser-btn" data-context="playlist" data-id="${escHtml(playlistId)}" data-name="${escHtml(playlistName)}" title="Queue whole playlist in browser">▶ Browser</button>
+                <button class="btn-primary sp-play-all-sonos-btn" data-context="playlist" data-id="${escHtml(playlistId)}" data-name="${escHtml(playlistName)}" title="Queue whole playlist on Sonos">▶ Sonos</button>
+            </div>`);
+            for (const t of tracks) {
+                const pinRes  = await fetch(`/api/spotify/pin/check/${encodeURIComponent(t.id)}`);
+                const pinData = await pinRes.json();
+                rows.push(renderSpTrackRow({...t, spotify_id: t.id}, pinData.pinned));
+            }
+        } else {
+            rows.push('<div class="loading-row muted-row">No tracks</div>');
+        }
+        spShowList(rows);
     } catch (err) {
         document.getElementById('sp-file-list').innerHTML =
             '<div class="loading-row error-row">Failed to load playlist</div>';
@@ -1787,7 +1798,7 @@ function attachSpListeners() {
     list.querySelectorAll('.sp-play-all-sonos-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             if (window.spotifyPlay) {
-                spotifyPlay('sonos', 'album', btn.dataset.id, null, btn.dataset.name);
+                spotifyPlay('sonos', btn.dataset.context || 'album', btn.dataset.id, null, btn.dataset.name);
             }
         });
     });
@@ -1795,7 +1806,7 @@ function attachSpListeners() {
     list.querySelectorAll('.sp-play-all-browser-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             if (window.spotifyPlay) {
-                spotifyPlay('browser', 'album', btn.dataset.id, null, btn.dataset.name);
+                spotifyPlay('browser', btn.dataset.context || 'album', btn.dataset.id, null, btn.dataset.name);
             }
         });
     });
