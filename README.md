@@ -12,6 +12,7 @@ A web-based Sonos music controller that lets you browse, search, and play local 
 - **Playback Controls** — Persistent now-playing bar with play/pause, next/previous, and current track info
 - **Settings** — Configure Sonos speaker IP, FTP/SFTP credentials, and trigger re-indexing
 - **Background Indexing** — Recursively indexes remote music files into a local SQLite DB with progress indication
+- **Spotify** — OAuth login, search, pinned library (artists/albums/tracks), and playback via Sonos or browser
 
 ## Quick Start
 
@@ -41,10 +42,30 @@ docker run -p 8000:8000 -p 443:443 sonosweb
 
 > **Note:** The Dockerfile is currently outdated for LAN use. Running directly on the host is recommended when using dual HTTP/HTTPS ports.
 
+## Spotify Integration
+
+Browse, search, pin, and play Spotify music through both Sonos (via native `x-sonos-spotify:` URIs) and in-browser (via the Spotify Web Playback SDK, requires Premium).
+
+### Setup
+
+1. Create a [Spotify Developer App](https://developer.spotify.com/dashboard).
+2. Add a **Redirect URI** in the Spotify Dashboard — must be either:
+   - `http://localhost:8000/spotify/callback` (if browsing on the same machine)
+   - `https://<your-lan-ip>/spotify/callback` (if accessing from another device)
+   - **HTTPS is required** for non-`localhost` redirect URIs — Spotify's OAuth will reject plain HTTP for IP-based redirects.
+3. Copy the **Client ID** and **Client Secret**.
+4. Open Settings in SonosWeb → **Spotify** section → paste Client ID, Client Secret, and the matching Redirect URI.
+5. Click **Connect Spotify Account** and authorize through Spotify's OAuth page.
+
+The redirect URI in Settings must match the one registered in the Spotify Developer Dashboard **exactly** (trailing slashes, protocol, port — everything).
+
+> **Note:** The Sonos speaker must have Spotify linked in the Sonos app (Settings → Music & Content → Add Music Services → Spotify) for Sonos playback to work.
+
 ## Tech Stack
 
 - **Backend:** Python, FastAPI, Jinja2
 - **Frontend:** Vanilla JavaScript, CSS (dark theme)
 - **Sonos:** soco library
+- **Spotify:** spotipy, Spotify Web Playback SDK
 - **Database:** SQLite via aiosqlite
 - **File Transfer:** paramiko (SFTP), ftplib (FTP)
