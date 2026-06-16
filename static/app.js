@@ -1817,6 +1817,7 @@ async function toggleSpotifyPin(btn) {
         showToast(msg, 'success');
     }
 }
+}
 
 /* ============================================================
    SPOTIFY — Phase 3: Full Playback Engine
@@ -2231,4 +2232,3 @@ async function syncSpotifySonosState() {
     };
     window._patchedUpdateNowPlaying = newPatch;
 })();
-}
