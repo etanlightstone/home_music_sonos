@@ -801,7 +801,7 @@ window.playOnSonos = async function(relPath, name) {
             showToast('Sonos error: ' + data.message, 'error');
             return;
         }
-        if (audioEl) { audioEl.pause(); audioEl.src = ''; }
+        if (audioEl) { audioEl.pause(); audioEl.removeAttribute('src'); }
         playback.isPaused = false;
         playback.sonosQueue = [];
         updateNowPlaying(name || relPath.split('/').pop(), 'sonos');
@@ -828,7 +828,7 @@ window.playFolderOnSonos = async function(folderPath, folderName) {
             showToast('Sonos error: ' + data.message, 'error');
             return;
         }
-        if (audioEl) { audioEl.pause(); audioEl.src = ''; }
+        if (audioEl) { audioEl.pause(); audioEl.removeAttribute('src'); }
         playback.isPaused = false;
         const firstTitle = data.first_title || folderName;
         playback.sonosQueue = (data.titles || []).map((title, i) => ({
@@ -1923,7 +1923,7 @@ window.spotifyPlay = async function(mode, context, id, uri, name) {
 async function spotifyPlaySonos(context, id, uri, name) {
     if (typeof audioEl !== 'undefined' && audioEl) {
         audioEl.pause();
-        audioEl.src = '';
+        audioEl.removeAttribute('src');
     }
     if (typeof spotifySdk.player !== 'undefined' && spotifySdk.player && playback.mode === 'spotify-browser') {
         spotifySdk.player.pause();
@@ -2059,7 +2059,7 @@ async function spotifyPlayBrowser(context, id, uri, name) {
         return;
     }
 
-    if (typeof audioEl !== 'undefined' && audioEl) { audioEl.pause(); audioEl.src = ''; }
+    if (typeof audioEl !== 'undefined' && audioEl) { audioEl.pause(); audioEl.removeAttribute('src'); }
     stopSonosPoller();
 
     let uris = [];
@@ -2120,10 +2120,6 @@ async function spotifyPlayBrowser(context, id, uri, name) {
 
 // ── Extend Phase 4 controls bar handlers ─────────────────────
 
-const _p4_onPlayPause = typeof onPlayPause === 'function' ? onPlayPause : () => {};
-const _p4_onNext      = typeof onNext      === 'function' ? onNext      : () => {};
-const _p4_onPrev      = typeof onPrev      === 'function' ? onPrev      : () => {};
-
 function onPlayPause() {
     if (playback.mode === 'spotify-browser') {
         if (!spotifySdk.player) return;
@@ -2140,8 +2136,25 @@ function onPlayPause() {
             playback.isPaused = true;
             setPlayPauseBtn(false);
         }
-    } else {
-        _p4_onPlayPause();
+    } else if (playback.mode === 'browser') {
+        if (!audioEl) return;
+        if (audioEl.paused) {
+            audioEl.play();
+        } else {
+            audioEl.pause();
+        }
+    } else if (playback.mode === 'sonos') {
+        if (playback.isPaused) {
+            fetch('/api/sonos/resume', { method: 'POST' }).then(() => {
+                playback.isPaused = false;
+                setPlayPauseBtn(true);
+            });
+        } else {
+            fetch('/api/sonos/pause', { method: 'POST' }).then(() => {
+                playback.isPaused = true;
+                setPlayPauseBtn(false);
+            });
+        }
     }
 }
 
@@ -2151,8 +2164,12 @@ function onNext() {
     } else if (playback.mode === 'spotify-sonos') {
         fetch('/api/sonos/next', { method: 'POST' })
             .then(() => setTimeout(syncSpotifySonosState, 600));
-    } else {
-        _p4_onNext();
+    } else if (playback.mode === 'browser') {
+        advanceBrowserPlaylist(1);
+    } else if (playback.mode === 'sonos') {
+        fetch('/api/sonos/next', { method: 'POST' })
+            .then(r => r.json())
+            .then(() => setTimeout(syncSonosState, 500));
     }
 }
 
@@ -2162,8 +2179,12 @@ function onPrev() {
     } else if (playback.mode === 'spotify-sonos') {
         fetch('/api/sonos/previous', { method: 'POST' })
             .then(() => setTimeout(syncSpotifySonosState, 600));
-    } else {
-        _p4_onPrev();
+    } else if (playback.mode === 'browser') {
+        advanceBrowserPlaylist(-1);
+    } else if (playback.mode === 'sonos') {
+        fetch('/api/sonos/previous', { method: 'POST' })
+            .then(r => r.json())
+            .then(() => setTimeout(syncSonosState, 500));
     }
 }
 
