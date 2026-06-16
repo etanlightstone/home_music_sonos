@@ -48,12 +48,14 @@ Browse, search, pin, and play Spotify music through both Sonos (via native `x-so
 
 ### Setup
 
-1. Create a [Spotify Developer App](https://developer.spotify.com/dashboard).
+Spotify credentials are **not** included in the repo — you must register your own app.
+
+1. Create your own app on the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard).
 2. Add a **Redirect URI** in the Spotify Dashboard — must be either:
    - `http://localhost:8000/spotify/callback` (if browsing on the same machine)
    - `https://<your-lan-ip>/spotify/callback` (if accessing from another device)
    - **HTTPS is required** for non-`localhost` redirect URIs — Spotify's OAuth will reject plain HTTP for IP-based redirects.
-3. Copy the **Client ID** and **Client Secret**.
+3. Copy your app's **Client ID** and **Client Secret** from the Dashboard.
 4. Open Settings in SonosWeb → **Spotify** section → paste Client ID, Client Secret, and the matching Redirect URI.
 5. Click **Connect Spotify Account** and authorize through Spotify's OAuth page.
 
