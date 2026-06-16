@@ -675,7 +675,7 @@ function onNext() {
     } else if (playback.mode === 'sonos') {
         fetch('/api/sonos/next', { method: 'POST' })
             .then(r => r.json())
-           .then(() => setTimeout(syncSonosState, 500));
+            .then(() => setTimeout(syncSonosState, 500));
     }
 }
 
@@ -873,7 +873,6 @@ async function syncSonosState() {
         const isFailed   = state === 'PLAYBACK_FAILED';
 
         let title = sonosTitle;
-        let uriChanged = sonosUri && sonosUri !== playback.currentSonosUri;
 
         if (playback.sonosQueue.length > 0) {
             // Fallback 1: match by URI
@@ -895,9 +894,8 @@ async function syncSonosState() {
             title = playback.currentTitle;
         }
 
-        if (uriChanged || (title && title !== playback.currentTitle)) {
+        if (title && title !== playback.currentTitle) {
             updateNowPlaying(title, 'sonos');
-            playback.currentSonosUri = sonosUri;
         }
         playback.isPaused = (state === 'PAUSED_PLAYBACK');
         setPlayPauseBtn(isPlaying);
@@ -1023,16 +1021,8 @@ function syncEpTrackInfo() {
         epBottomTrackName.textContent = playback.currentTitle || '—';
     }
     if (epModeBadge && playback.mode) {
-        if (playback.mode === 'spotify-browser') {
-            epModeBadge.textContent = 'Spotify';
-            epModeBadge.className   = 'ep-mode-badge spotify-browser-badge';
-        } else if (playback.mode === 'spotify-sonos') {
-            epModeBadge.textContent = 'Spotify → Sonos';
-            epModeBadge.className   = 'ep-mode-badge spotify-sonos-badge';
-        } else {
-            epModeBadge.textContent = playback.mode === 'sonos' ? 'Sonos' : 'Browser';
-            epModeBadge.className   = `ep-mode-badge ${playback.mode}`;
-        }
+        epModeBadge.textContent = playback.mode === 'sonos' ? 'Sonos' : 'Browser';
+        epModeBadge.className   = `ep-mode-badge ${playback.mode}`;
     }
 }
 
@@ -1954,7 +1944,6 @@ async function spotifyPlaySonos(context, id, uri, name) {
                 return;
             }
             playback.isPaused = false;
-            playback.sonosQueue = [{ title: name || id, uri: spotifyUri }];
             updateNowPlaying(name || id, 'spotify-sonos');
             setPlayPauseBtn(true);
             startSpotifySonosPoller();
@@ -1990,10 +1979,6 @@ async function spotifyPlaySonos(context, id, uri, name) {
                 return;
             }
             playback.isPaused = false;
-            playback.sonosQueue = tracks.map(t => ({
-                title: t.name,
-                uri: `spotify:track:${t.spotify_id || t.id}`,
-            }));
             updateNowPlaying(data.first_title || name, 'spotify-sonos');
             setPlayPauseBtn(true);
             startSpotifySonosPoller();
@@ -2027,10 +2012,6 @@ async function spotifyPlaySonos(context, id, uri, name) {
             });
             const data = await res.json();
             playback.isPaused = false;
-            playback.sonosQueue = allTracks.map(t => ({
-                title: t.name,
-                uri: `spotify:track:${t.spotify_id}`,
-            }));
             updateNowPlaying(data.first_title || name, 'spotify-sonos');
             setPlayPauseBtn(true);
             startSpotifySonosPoller();
@@ -2055,10 +2036,6 @@ async function spotifyPlaySonos(context, id, uri, name) {
             });
             const qData = await qRes.json();
             playback.isPaused = false;
-            playback.sonosQueue = tracks.map(t => ({
-                title: t.name,
-                uri: `spotify:track:${t.id}`,
-            }));
             updateNowPlaying(qData.first_title || name, 'spotify-sonos');
             setPlayPauseBtn(true);
             startSpotifySonosPoller();
@@ -2230,27 +2207,9 @@ async function syncSpotifySonosState() {
     try {
         const res  = await fetch('/api/sonos/state');
         const data = await res.json();
-        const sonosUri   = data.uri || '';
         const title = data.title || playback.currentTitle;
-        let uriChanged = sonosUri && sonosUri !== playback.currentSonosUri;
-
-        if (playback.sonosQueue.length > 0 && sonosUri) {
-            const uriIdx = playback.sonosQueue.findIndex(q => q.uri && sonosUri.includes(q.uri));
-            if (uriIdx !== -1) {
-                const queuedTitle = playback.sonosQueue[uriIdx].title;
-                if (queuedTitle !== playback.currentTitle) {
-                    uriChanged = true;
-                }
-                if (uriChanged || !data.title) {
-                    updateNowPlaying(queuedTitle, 'spotify-sonos');
-                    playback.currentSonosUri = sonosUri;
-                }
-            }
-        }
-
-        if (uriChanged || (title && title !== playback.currentTitle)) {
+        if (title && title !== playback.currentTitle) {
             updateNowPlaying(title, 'spotify-sonos');
-            playback.currentSonosUri = sonosUri;
         }
         const isPlaying = data.state === 'PLAYING';
         playback.isPaused = (data.state === 'PAUSED_PLAYBACK');
