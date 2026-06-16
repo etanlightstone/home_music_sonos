@@ -13,6 +13,7 @@
     <span class="app-title">🎵 SonosWeb</span>
     <div class="tab-links">
       <a href="#" class="tab-link active" data-tab="browser">Browser</a>
+      <a href="#" class="tab-link" data-tab="spotify">Spotify</a>
       <a href="#" class="tab-link" data-tab="settings">Settings</a>
     </div>
   </nav>
@@ -96,6 +97,63 @@
       </div>
     </div>
 
+    <!-- SPOTIFY TAB -->
+    <div id="tab-spotify" class="tab-content hidden">
+
+      <!-- Auth prompt — shown when not logged in -->
+      <div id="spotify-auth-prompt" class="spotify-auth-prompt hidden">
+        <div class="spotify-auth-card">
+          <span class="spotify-logo">🎵</span>
+          <h2>Connect Spotify</h2>
+          <p>Log in with Spotify to browse your pinned library and play music on Sonos.</p>
+          <p class="auth-hint">
+            You need a <a href="https://developer.spotify.com/dashboard" target="_blank">Spotify Developer App</a>
+            with redirect URI set to <code id="redirect-uri-display">http://localhost:8000/spotify/callback</code>.<br>
+            Add your Client ID and Secret in <a href="#" class="tab-link" data-tab="settings">Settings</a> first.
+          </p>
+          <a href="/spotify/login" class="btn-spotify-login">Login with Spotify</a>
+        </div>
+      </div>
+
+      <!-- Main Spotify browser — shown when authenticated -->
+      <div id="spotify-browser" class="hidden">
+
+        <!-- Top controls row: view toggle + search mode toggle -->
+        <div class="spotify-top-controls">
+          <div class="spotify-view-toggle">
+            <button class="sp-toggle-btn sp-toggle-active" id="sp-view-artists" data-view="artists">
+              Artists
+            </button>
+            <button class="sp-toggle-btn" id="sp-view-playlists" data-view="playlists">
+              Playlists
+            </button>
+          </div>
+          <div class="spotify-search-area">
+            <input type="text" id="sp-search-input" class="search-input"
+                   placeholder="Search…" autocomplete="off">
+            <div class="search-filters">
+              <label><input type="radio" name="sp-search-scope" value="library" checked> Library</label>
+              <label><input type="radio" name="sp-search-scope" value="spotify"> All Spotify</label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Breadcrumb -->
+        <div id="sp-breadcrumb" class="breadcrumb hidden"></div>
+
+        <!-- File list (reuses same CSS as mp3 browser) -->
+        <div id="sp-file-list" class="file-list hidden"></div>
+
+        <!-- Empty state -->
+        <div id="sp-empty-state" class="empty-state hidden">
+          <p>📌 No Spotify items pinned yet.</p>
+          <p>Use the search bar to find artists, albums, or tracks and pin them to your library.</p>
+        </div>
+
+      </div>
+
+    </div>
+
     <!-- SETTINGS TAB -->
     <div id="tab-settings" class="tab-content hidden">
       <div class="settings-card">
@@ -142,6 +200,33 @@
               <span class="label-hint">(leave blank to auto-detect — used to build URLs for Sonos)</span>
             </label>
             <input type="text" id="webserver_host" name="webserver_host" placeholder="192.168.1.5:8000">
+          </div>
+
+          <h2>Spotify</h2>
+          <div class="form-group">
+            <label for="spotify_client_id">Client ID</label>
+            <input type="text" id="spotify_client_id" name="spotify_client_id" placeholder="From developer.spotify.com/dashboard">
+          </div>
+          <div class="form-group">
+            <label for="spotify_client_secret">Client Secret</label>
+            <input type="password" id="spotify_client_secret" name="spotify_client_secret">
+          </div>
+          <div class="form-group">
+            <label for="spotify_redirect_uri">
+              Redirect URI
+              <span class="label-hint">(must match exactly in your Spotify App settings)</span>
+            </label>
+            <input type="text" id="spotify_redirect_uri" name="spotify_redirect_uri"
+                   placeholder="http://localhost:8000/spotify/callback">
+          </div>
+          <div class="form-actions">
+            <a href="/spotify/login" class="btn-primary" id="spotify-login-link">
+              Connect Spotify Account
+            </a>
+            <button type="button" id="spotify-logout-btn" class="btn-secondary hidden">
+              Disconnect Spotify
+            </button>
+            <span id="spotify-auth-badge" class="spotify-status-badge"></span>
           </div>
         </form>
 
@@ -255,6 +340,10 @@
 
   </div>
 
+  <!-- Spotify Web Playback SDK placeholder (prevents AnthemError if SDK loads before app.js) -->
+  <script>window.onSpotifyWebPlaybackSDKReady=function(){}</script>
+  <!-- Spotify Web Playback SDK (loaded async, initialized in app.js only when needed) -->
+  <script src="https://sdk.scdn.co/spotify-player.js" async></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

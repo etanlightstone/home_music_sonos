@@ -1,4 +1,5 @@
 import asyncio
+import soco
 from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Optional
@@ -124,3 +125,119 @@ async def set_volume(req: SetVolumeRequest):
     sonos_ip = _get_sonos_ip()
     loop     = asyncio.get_event_loop()
     return await loop.run_in_executor(None, sc.set_volume, sonos_ip, req.volume)
+
+
+# ── Diagnostics ────────────────────────────────────────────────
+
+@router.get("/debug")
+async def debug_sonos():
+    """Dump Sonos speaker info, group, and available music services."""
+    from soco import discover
+    sonos_ip = _get_sonos_ip()
+    info = {"target_ip": sonos_ip}
+
+    # Discover all speakers
+    try:
+        speakers = discover()
+        if speakers:
+            info["discovered"] = [
+                {"name": s.player_name, "ip": s.ip_address, "uid": s.uid}
+                for s in speakers
+            ]
+        else:
+            info["discovered"] = []
+    except Exception as exc:
+        info["discovered_error"] = str(exc)
+
+    # Detailed info for the target speaker
+    player = soco.SoCo(sonos_ip)
+    try:
+        info["player_name"] = player.player_name
+        info["uid"] = player.uid
+        info["ip"] = player.ip_address
+    except Exception as exc:
+        info["player_error"] = str(exc)
+
+    try:
+        group = player.group
+        if group is not None:
+            coord = group.coordinator
+            info["coordinator"] = {"name": coord.player_name, "ip": coord.ip_address, "uid": coord.uid}
+            info["group_members"] = [
+                {"name": m.player_name, "ip": m.ip_address}
+                for m in group.members
+            ]
+    except Exception as exc:
+        info["group_error"] = str(exc)
+
+    # List music services
+    try:
+        services = player.music_services
+        info["music_services"] = [
+            {"name": svc.name, "sid": svc.sid, "capabilities": svc.capabilities}
+            for svc in services
+        ]
+    except Exception as exc:
+        info["music_services_error"] = str(exc)
+
+    # Check if Spotify (sid=9) is linked
+    try:
+        spotify_svc = player.get_music_service(9)
+        info["spotify_service"] = {
+            "name": spotify_svc.name,
+            "auth": spotify_svc.authentication,
+            "policy": spotify_svc.policy,
+            "present": spotify_svc.present,
+        }
+    except Exception as exc:
+        info["spotify_service_error"] = str(exc)
+
+    return info
+
+
+# ── Spotify-on-Sonos playback ─────────────────────────────────
+
+class PlaySpotifyTrackOnSonosRequest(BaseModel):
+    spotify_uri: str
+    name:        str = ""
+
+
+class PlaySpotifyAlbumOnSonosRequest(BaseModel):
+    track_uris:  list[str]
+    names:       list[str]
+    album_name:  str = ""
+
+
+@router.post("/play-spotify-track")
+async def play_spotify_track_on_sonos(req: PlaySpotifyTrackOnSonosRequest):
+    sonos_ip  = _get_sonos_ip()
+    title     = req.name or req.spotify_uri.split(":")[-1]
+
+    print(f"[DEBUG play_spotify_track_on_sonos] spotify_uri={req.spotify_uri}")
+    print(f"[DEBUG play_spotify_track_on_sonos] sonos_ip={sonos_ip}")
+    print(f"[DEBUG play_spotify_track_on_sonos] title={title}")
+
+    loop   = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, sc.play_spotify_uri, sonos_ip, req.spotify_uri, title)
+
+    print(f"[DEBUG play_spotify_track_on_sonos] result={result}")
+
+    return {**result, "spotify_uri": req.spotify_uri, "title": title}
+
+
+@router.post("/play-spotify-album")
+async def play_spotify_album_on_sonos(req: PlaySpotifyAlbumOnSonosRequest):
+    if not req.track_uris:
+        return {"status": "error", "message": "No tracks provided"}
+
+    sonos_ip   = _get_sonos_ip()
+    titles     = req.names if req.names else [f"Track {i+1}" for i in range(len(req.track_uris))]
+
+    loop   = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, sc.play_spotify_queue, sonos_ip, req.track_uris, titles)
+    return {
+        **result,
+        "album": req.album_name,
+        "track_count": len(req.track_uris),
+        "first_title": titles[0] if titles else "",
+    }

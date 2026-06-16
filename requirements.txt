@@ -6,3 +6,4 @@ aiofiles>=23.2.1
 soco>=0.30.0
 paramiko>=3.4.0
 mutagen>=1.47.0
+spotipy>=2.23.0

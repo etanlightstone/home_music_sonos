@@ -721,7 +721,7 @@ function setVolumeUI(vol) {
 function onVolumeInput(e) {
     const vol = parseInt(e.target.value, 10);
     setVolumeUI(vol);
-    if (playback.mode === 'sonos') {
+    if (playback.mode === 'sonos' || playback.mode === 'spotify-sonos') {
         fetch('/api/sonos/set-volume', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -801,7 +801,7 @@ window.playOnSonos = async function(relPath, name) {
             showToast('Sonos error: ' + data.message, 'error');
             return;
         }
-        if (audioEl) { audioEl.pause(); audioEl.src = ''; }
+        if (audioEl) { audioEl.pause(); audioEl.removeAttribute('src'); }
         playback.isPaused = false;
         playback.sonosQueue = [];
         updateNowPlaying(name || relPath.split('/').pop(), 'sonos');
@@ -828,7 +828,7 @@ window.playFolderOnSonos = async function(folderPath, folderName) {
             showToast('Sonos error: ' + data.message, 'error');
             return;
         }
-        if (audioEl) { audioEl.pause(); audioEl.src = ''; }
+        if (audioEl) { audioEl.pause(); audioEl.removeAttribute('src'); }
         playback.isPaused = false;
         const firstTitle = data.first_title || folderName;
         playback.sonosQueue = (data.titles || []).map((title, i) => ({
@@ -989,7 +989,7 @@ function openExpandedPlayer() {
     if (!expandedPlayer) return;
 
     syncEpTrackInfo();
-    if (playback.mode === 'sonos' && playback.volume !== undefined) {
+    if ((playback.mode === 'sonos' || playback.mode === 'spotify-sonos') && playback.volume !== undefined) {
         setVolumeUI(playback.volume);
     }
 
@@ -1036,6 +1036,7 @@ function syncEpTrackInfo() {
         syncEpPlayPauseIcon();
     };
     window._patchedUpdateNowPlaying = patched;
+    window.updateNowPlaying = patched;
 })();
 
 
@@ -1146,3 +1147,1191 @@ function drawSpectrumBars(dataArray, bufferLength) {
         epCtx.fillRect(x, epCanvas.height - barHeight, Math.max(1, barWidth), barHeight);
     }
 }
+
+/* ============================================================
+   SPOTIFY — Phase 1: Tab init, auth check, settings status
+   ============================================================ */
+
+document.addEventListener('DOMContentLoaded', initSpotifyTab);
+
+async function initSpotifyTab() {
+    await checkSpotifyAuth();
+
+    // Handle redirect back from Spotify OAuth
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('spotify_auth') === 'success') {
+        showToast('Spotify connected!', 'success');
+        if (params.get('tab') === 'spotify') switchTab('spotify');
+        // Clean URL
+        history.replaceState({}, '', '/');
+    } else if (params.get('spotify_auth') === 'error') {
+        showToast('Spotify auth failed. Check credentials in Settings.', 'error');
+        history.replaceState({}, '', '/');
+    }
+
+    // Logout button
+    document.getElementById('spotify-logout-btn')?.addEventListener('click', async () => {
+        await fetch('/api/spotify/logout', { method: 'POST' });
+        showToast('Spotify disconnected', 'success');
+        checkSpotifyAuth();
+    });
+}
+
+async function checkSpotifyAuth() {
+    try {
+        const res  = await fetch('/api/spotify/auth-status');
+        const data = await res.json();
+        const auth = data.authenticated;
+
+        // Spotify tab content
+        document.getElementById('spotify-auth-prompt')?.classList.toggle('hidden', auth);
+        document.getElementById('spotify-browser')?.classList.toggle('hidden', !auth);
+
+        // Settings tab auth state
+        const badge = document.getElementById('spotify-auth-badge');
+        if (badge) {
+            badge.textContent = auth ? 'Connected' : 'Not connected';
+            badge.className = `spotify-status-badge ${auth ? 'connected' : 'disconnected'}`;
+        }
+        document.getElementById('spotify-login-link')?.classList.toggle('hidden', auth);
+        document.getElementById('spotify-logout-btn')?.classList.toggle('hidden', !auth);
+
+        // Show redirect URI in auth prompt
+        const uriDisplay = document.getElementById('redirect-uri-display');
+        if (uriDisplay) {
+            const settings = await fetch('/api/settings').then(r => r.json());
+            uriDisplay.textContent = settings.spotify_redirect_uri || 'http://localhost:8000/spotify/callback';
+        }
+
+        return auth;
+    } catch (err) {
+        console.error('[Spotify] Auth check failed:', err);
+        return false;
+    }
+}
+
+// Expose so Phase 2 can call it after a fresh auth
+window.checkSpotifyAuth = checkSpotifyAuth;
+
+
+/* ============================================================
+   SPOTIFY — Phase 2: Library browser, pin system, search
+   ============================================================ */
+
+const sp = {
+    view:        'artists',
+    searchScope: 'library',
+    breadcrumb:  [],
+    searchTimer: null,
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+    const browserEl = document.getElementById('spotify-browser');
+    if (!browserEl) return;
+
+    const observer = new MutationObserver(() => {
+        if (!browserEl.classList.contains('hidden')) {
+            initSpotifyBrowser();
+            observer.disconnect();
+        }
+    });
+    observer.observe(browserEl, { attributes: true, attributeFilter: ['class'] });
+
+    if (!browserEl.classList.contains('hidden')) {
+        initSpotifyBrowser();
+    }
+});
+
+function initSpotifyBrowser() {
+    document.querySelectorAll('.sp-toggle-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            sp.view = btn.dataset.view;
+            document.querySelectorAll('.sp-toggle-btn').forEach(b => b.classList.remove('sp-toggle-active'));
+            btn.classList.add('sp-toggle-active');
+            sp.breadcrumb = [];
+            if (sp.view === 'artists')   loadSpotifyArtists();
+            else                          loadSpotifyPlaylists();
+        });
+    });
+
+    const searchInput = document.getElementById('sp-search-input');
+    searchInput?.addEventListener('input', () => {
+        clearTimeout(sp.searchTimer);
+        const q = searchInput.value.trim();
+        if (!q) { exitSpotifySearch(); return; }
+        sp.searchTimer = setTimeout(() => runSpotifySearch(q), 300);
+    });
+    searchInput?.addEventListener('keydown', e => {
+        if (e.key === 'Escape') { searchInput.value = ''; exitSpotifySearch(); }
+    });
+    document.querySelectorAll('[name="sp-search-scope"]').forEach(r => {
+        r.addEventListener('change', () => {
+            sp.searchScope = r.value;
+            const q = document.getElementById('sp-search-input')?.value.trim();
+            if (q) runSpotifySearch(q);
+        });
+    });
+
+    loadSpotifyArtists();
+}
+
+// ── Breadcrumb ────────────────────────────────────────────────
+
+function renderSpBreadcrumb() {
+    const el = document.getElementById('sp-breadcrumb');
+    if (!el) return;
+    if (!sp.breadcrumb.length) {
+        el.classList.add('hidden');
+        return;
+    }
+    const crumbs = [{ label: 'Spotify', action: () => {
+        sp.breadcrumb = [];
+        if (sp.view === 'artists') loadSpotifyArtists();
+        else loadSpotifyPlaylists();
+    }}];
+
+    let html = `<a href="#" class="crumb-link sp-crumb-0">Spotify</a>`;
+    sp.breadcrumb.forEach((c, i) => {
+        html += `<span class="crumb-sep"> / </span>`;
+        if (i < sp.breadcrumb.length - 1) {
+            html += `<a href="#" class="crumb-link sp-crumb-${i+1}">${escHtml(c.label)}</a>`;
+        } else {
+            html += `<span class="crumb-current">${escHtml(c.label)}</span>`;
+        }
+    });
+    el.innerHTML = html;
+    el.classList.remove('hidden');
+
+    el.querySelector('.sp-crumb-0')?.addEventListener('click', e => {
+        e.preventDefault();
+        sp.breadcrumb = [];
+        if (sp.view === 'artists') loadSpotifyArtists();
+        else loadSpotifyPlaylists();
+    });
+    sp.breadcrumb.forEach((c, i) => {
+        if (i < sp.breadcrumb.length - 1) {
+            el.querySelector(`.sp-crumb-${i+1}`)?.addEventListener('click', e => {
+                e.preventDefault();
+                sp.breadcrumb = sp.breadcrumb.slice(0, i + 1);
+                c.action();
+            });
+        }
+    });
+}
+
+// ── List helpers ──────────────────────────────────────────────
+
+function spShowList(rows) {
+    const list = document.getElementById('sp-file-list');
+    const empty = document.getElementById('sp-empty-state');
+    if (!list) return;
+    if (!rows.length) {
+        list.classList.add('hidden');
+        empty?.classList.remove('hidden');
+        return;
+    }
+    empty?.classList.add('hidden');
+    list.innerHTML = rows.join('');
+    list.classList.remove('hidden');
+    attachSpListeners();
+}
+
+function spSetLoading() {
+    const list = document.getElementById('sp-file-list');
+    if (list) {
+        list.innerHTML = '<div class="loading-row">Loading…</div>';
+        list.classList.remove('hidden');
+    }
+    document.getElementById('sp-empty-state')?.classList.add('hidden');
+}
+
+function spFormatDuration(ms) {
+    if (!ms) return '';
+    const s = Math.floor(ms / 1000);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+// ── Row renderers ─────────────────────────────────────────────
+
+function renderSpArtistRow(a, isPinned) {
+    const img = a.image_url
+        ? `<img class="sp-thumb" src="${escHtml(a.image_url)}" alt="" loading="lazy">`
+        : `<span class="sp-thumb-placeholder">🎤</span>`;
+    const pinLabel = isPinned ? '📌 Pinned' : '+ Pin';
+    return `
+    <div class="file-row folder-row">
+      ${img}
+      <span class="file-name folder-name-link sp-artist-link"
+            data-id="${escHtml(a.spotify_id || a.id)}"
+            data-name="${escHtml(a.name)}">${escHtml(a.name)}</span>
+      <span class="file-meta"></span>
+      <div class="file-actions">
+        <button class="sp-pin-btn ${isPinned ? 'pinned' : ''}"
+                data-action="pin" data-type="artist"
+                data-id="${escHtml(a.spotify_id || a.id)}"
+                data-name="${escHtml(a.name)}"
+                data-image="${escHtml(a.image_url || '')}">${pinLabel}</button>
+        <button class="btn-secondary sp-play-btn"
+                data-mode="browser" data-context="artist"
+                data-id="${escHtml(a.spotify_id || a.id)}">▶ Browser</button>
+        <button class="btn-primary sp-play-btn"
+                data-mode="sonos" data-context="artist"
+                data-id="${escHtml(a.spotify_id || a.id)}">▶ Sonos</button>
+      </div>
+    </div>`;
+}
+
+function renderSpAlbumRow(al, isPinned) {
+    const img = al.image_url
+        ? `<img class="sp-thumb" src="${escHtml(al.image_url)}" alt="" loading="lazy">`
+        : `<span class="sp-thumb-placeholder">💿</span>`;
+    const pinLabel = isPinned ? '📌 Pinned' : '+ Pin';
+    return `
+    <div class="file-row folder-row">
+      ${img}
+      <span class="file-name folder-name-link sp-album-link"
+            data-id="${escHtml(al.spotify_id || al.id)}"
+            data-name="${escHtml(al.name)}"
+            data-artist-id="${escHtml(al.artist_id || '')}"
+            data-artist-name="${escHtml(al.artist_name || '')}">${escHtml(al.name)}</span>
+      <span class="file-meta sp-year">${escHtml(al.release_year || '')}</span>
+      <div class="file-actions">
+        <button class="sp-pin-btn ${isPinned ? 'pinned' : ''}"
+                data-action="pin" data-type="album"
+                data-id="${escHtml(al.spotify_id || al.id)}"
+                data-name="${escHtml(al.name)}"
+                data-artist-id="${escHtml(al.artist_id || '')}"
+                data-artist-name="${escHtml(al.artist_name || '')}"
+                data-image="${escHtml(al.image_url || '')}">${pinLabel}</button>
+        <button class="btn-secondary sp-play-btn"
+                data-mode="browser" data-context="album"
+                data-id="${escHtml(al.spotify_id || al.id)}">▶ Browser</button>
+        <button class="btn-primary sp-play-btn"
+                data-mode="sonos" data-context="album"
+                data-id="${escHtml(al.spotify_id || al.id)}">▶ Sonos</button>
+      </div>
+    </div>`;
+}
+
+function renderSpTrackRow(t, isPinned) {
+    const num  = t.track_number ? `<span class="sp-track-num">${t.track_number}</span>` : '';
+    const dur  = `<span class="sp-duration">${spFormatDuration(t.duration_ms)}</span>`;
+    const pinLabel = isPinned ? '📌' : '+';
+    return `
+    <div class="file-row file-row-music sp-track-row">
+      ${num}
+      <span class="file-name">${escHtml(t.name)}</span>
+      ${dur}
+      <div class="file-actions">
+        <button class="sp-pin-btn ${isPinned ? 'pinned' : ''}"
+                data-action="pin" data-type="track"
+                data-id="${escHtml(t.spotify_id || t.id)}"
+                data-name="${escHtml(t.name)}"
+                data-artist-id="${escHtml(t.artist_id || '')}"
+                data-artist-name="${escHtml(t.artist_name || '')}"
+                data-album-id="${escHtml(t.album_id || '')}"
+                data-album-name="${escHtml(t.album_name || '')}"
+                data-track-num="${t.track_number || ''}"
+                data-disc-num="${t.disc_number || 1}"
+                data-duration="${t.duration_ms || ''}"
+                data-image="${escHtml(t.image_url || '')}">${pinLabel}</button>
+        <button class="btn-secondary sp-play-btn"
+                data-mode="browser" data-context="track"
+                data-id="${escHtml(t.spotify_id || t.id)}"
+                data-name="${escHtml(t.name)}"
+                data-uri="spotify:track:${escHtml(t.spotify_id || t.id)}">▶ Browser</button>
+        <button class="btn-primary sp-play-btn"
+                data-mode="sonos" data-context="track"
+                data-id="${escHtml(t.spotify_id || t.id)}"
+                data-name="${escHtml(t.name)}"
+                data-uri="spotify:track:${escHtml(t.spotify_id || t.id)}">▶ Sonos</button>
+      </div>
+    </div>`;
+}
+
+// ── Pin IDs cache ─────────────────────────────────────────────
+const pinnedIds = new Set();
+
+async function refreshPinnedIds() {
+}
+
+// ── Load views ────────────────────────────────────────────────
+
+async function loadSpotifyArtists() {
+    renderSpBreadcrumb();
+    spSetLoading();
+    try {
+        const res  = await fetch('/api/spotify/pins/artists');
+        const data = await res.json();
+        const artists = data.artists || [];
+
+        if (!artists.length) {
+            spShowList([]);
+            return;
+        }
+
+        const rows = artists.map(a => renderSpArtistRow(a, true));
+        spShowList(rows);
+    } catch (err) {
+        document.getElementById('sp-file-list').innerHTML =
+            '<div class="loading-row error-row">Failed to load library</div>';
+    }
+}
+
+async function loadSpotifyAlbumsForArtist(artistId, artistName) {
+    sp.breadcrumb = [{ label: artistName, action: () => loadSpotifyAlbumsForArtist(artistId, artistName) }];
+    renderSpBreadcrumb();
+    spSetLoading();
+    try {
+        const res  = await fetch(`/api/spotify/pins/albums/${encodeURIComponent(artistId)}`);
+        const data = await res.json();
+        const albums = data.albums || [];
+        const rows = [];
+
+        if (data.live_browse_available) {
+            rows.push(`<div class="sp-live-banner"><span class="sp-live-dot"></span>Browsing live from Spotify — pin albums to save to your library</div>`);
+            const liveRes  = await fetch(`/api/spotify/artist/${encodeURIComponent(artistId)}/albums`);
+            const liveData = await liveRes.json();
+            const liveAlbums = liveData.albums || [];
+            for (const al of liveAlbums) {
+                const pinRes = await fetch(`/api/spotify/pin/check/${encodeURIComponent(al.id)}`);
+                const pinData = await pinRes.json();
+                rows.push(renderSpAlbumRow({...al, spotify_id: al.id, artist_id: artistId, artist_name: artistName}, pinData.pinned));
+            }
+        } else if (albums.length > 0) {
+            for (const al of albums) {
+                const pinRes = await fetch(`/api/spotify/pin/check/${encodeURIComponent(al.spotify_id)}`);
+                const pinData = await pinRes.json();
+                rows.push(renderSpAlbumRow(al, pinData.pinned));
+            }
+            rows.push(`<button class="sp-show-all-btn" data-artist-id="${escHtml(artistId)}" data-artist-name="${escHtml(artistName)}">Show all albums</button>`);
+        }
+
+        if (rows.length > 0) {
+            const list = document.getElementById('sp-file-list');
+            if (list) {
+                list.innerHTML = rows.join('');
+                list.classList.remove('hidden');
+                document.getElementById('sp-empty-state')?.classList.add('hidden');
+                attachSpListeners();
+
+                const showAllBtn = list.querySelector('.sp-show-all-btn');
+                if (showAllBtn) {
+                    showAllBtn.addEventListener('click', () => loadSpotifyAllAlbums(artistId, artistName));
+                }
+            }
+        } else {
+            spShowList([]);
+        }
+    } catch (err) {
+        document.getElementById('sp-file-list').innerHTML =
+            '<div class="loading-row error-row">Failed to load albums</div>';
+    }
+}
+
+async function loadSpotifyAllAlbums(artistId, artistName) {
+    sp.breadcrumb = [{ label: artistName, action: () => loadSpotifyAlbumsForArtist(artistId, artistName) }];
+    renderSpBreadcrumb();
+    spSetLoading();
+    try {
+        const rows = [];
+        const liveRes  = await fetch(`/api/spotify/artist/${encodeURIComponent(artistId)}/albums`);
+        const liveData = await liveRes.json();
+        const liveAlbums = liveData.albums || [];
+        for (const al of liveAlbums) {
+            const pinRes = await fetch(`/api/spotify/pin/check/${encodeURIComponent(al.id)}`);
+            const pinData = await pinRes.json();
+            rows.push(renderSpAlbumRow({...al, spotify_id: al.id, artist_id: artistId, artist_name: artistName}, pinData.pinned));
+        }
+
+        const list = document.getElementById('sp-file-list');
+        if (list) {
+            list.innerHTML = rows.join('');
+            list.classList.remove('hidden');
+            document.getElementById('sp-empty-state')?.classList.add('hidden');
+            attachSpListeners();
+        } else {
+            spShowList([]);
+        }
+    } catch (err) {
+        document.getElementById('sp-file-list').innerHTML =
+            '<div class="loading-row error-row">Failed to load albums</div>';
+    }
+}
+
+async function loadSpotifyTracksForAlbum(albumId, albumName, artistId, artistName) {
+    spSetLoading();
+    try {
+        const res  = await fetch(`/api/spotify/pins/tracks/${encodeURIComponent(albumId)}`);
+        const data = await res.json();
+        let tracks = data.tracks || [];
+
+        if (!tracks.length) {
+            const liveRes  = await fetch(`/api/spotify/album/${encodeURIComponent(albumId)}/tracks`);
+            const liveData = await liveRes.json();
+            tracks = (liveData.tracks || []).map(t => ({ ...t, spotify_id: t.id }));
+        }
+
+        const rows = [];
+        if (!tracks.length) {
+            rows.push('<div class="loading-row muted-row">No tracks found</div>');
+        } else {
+            const playAllHtml = `
+            <div class="play-all-bar">
+                <span class="play-all-label">Play all</span>
+                <button class="btn-secondary sp-play-all-browser-btn" data-context="album" data-id="${escHtml(albumId)}" data-name="${escHtml(albumName)}" title="Queue whole album in browser">▶ Browser</button>
+                <button class="btn-primary sp-play-all-sonos-btn" data-context="album" data-id="${escHtml(albumId)}" data-name="${escHtml(albumName)}" title="Queue whole album on Sonos">▶ Sonos</button>
+            </div>`;
+            rows.push(playAllHtml);
+            for (const t of tracks) {
+                const pinRes = await fetch(`/api/spotify/pin/check/${encodeURIComponent(t.spotify_id || t.id)}`);
+                const pinData = await pinRes.json();
+                rows.push(renderSpTrackRow(t, pinData.pinned));
+            }
+        }
+
+        const list = document.getElementById('sp-file-list');
+        if (list) {
+            list.innerHTML = rows.join('');
+            list.classList.remove('hidden');
+            document.getElementById('sp-empty-state')?.classList.add('hidden');
+            attachSpListeners();
+        }
+    } catch (err) {
+        document.getElementById('sp-file-list').innerHTML =
+            '<div class="loading-row error-row">Failed to load tracks</div>';
+    }
+}
+
+async function loadSpotifyPlaylists() {
+    sp.breadcrumb = [];
+    renderSpBreadcrumb();
+    spSetLoading();
+    try {
+        const res  = await fetch('/api/spotify/playlists');
+        const data = await res.json();
+        const playlists = data.playlists || [];
+        if (!playlists.length) { spShowList([]); return; }
+        const rows = playlists.map(pl => `
+        <div class="file-row folder-row">
+          ${pl.image_url ? `<img class="sp-thumb" src="${escHtml(pl.image_url)}" alt="" loading="lazy">` : '<span class="sp-thumb-placeholder">🎵</span>'}
+          <span class="file-name folder-name-link sp-playlist-link"
+                data-id="${escHtml(pl.id)}" data-name="${escHtml(pl.name)}">${escHtml(pl.name)}</span>
+          <span class="file-meta">${pl.track_count} tracks</span>
+          <div class="file-actions">
+            <button class="btn-secondary sp-play-btn" data-mode="browser" data-context="playlist" data-id="${escHtml(pl.id)}">▶ Browser</button>
+            <button class="btn-primary sp-play-btn" data-mode="sonos" data-context="playlist" data-id="${escHtml(pl.id)}">▶ Sonos</button>
+          </div>
+        </div>`);
+        spShowList(rows);
+    } catch (err) {
+        document.getElementById('sp-file-list').innerHTML =
+            '<div class="loading-row error-row">Failed to load playlists</div>';
+    }
+}
+
+async function loadSpotifyPlaylistTracks(playlistId, playlistName) {
+    sp.breadcrumb = [{ label: playlistName, action: () => loadSpotifyPlaylistTracks(playlistId, playlistName) }];
+    renderSpBreadcrumb();
+    spSetLoading();
+    try {
+        const res  = await fetch(`/api/spotify/playlist/${encodeURIComponent(playlistId)}/tracks`);
+        const data = await res.json();
+        const tracks = data.tracks || [];
+        const rows = [];
+        if (tracks.length) {
+            rows.push(`
+            <div class="play-all-bar">
+                <span class="play-all-label">Play all</span>
+                <button class="btn-secondary sp-play-all-browser-btn" data-context="playlist" data-id="${escHtml(playlistId)}" data-name="${escHtml(playlistName)}" title="Queue whole playlist in browser">▶ Browser</button>
+                <button class="btn-primary sp-play-all-sonos-btn" data-context="playlist" data-id="${escHtml(playlistId)}" data-name="${escHtml(playlistName)}" title="Queue whole playlist on Sonos">▶ Sonos</button>
+            </div>`);
+            for (const t of tracks) {
+                const pinRes  = await fetch(`/api/spotify/pin/check/${encodeURIComponent(t.id)}`);
+                const pinData = await pinRes.json();
+                rows.push(renderSpTrackRow({...t, spotify_id: t.id}, pinData.pinned));
+            }
+        } else {
+            rows.push('<div class="loading-row muted-row">No tracks</div>');
+        }
+        spShowList(rows);
+    } catch (err) {
+        document.getElementById('sp-file-list').innerHTML =
+            '<div class="loading-row error-row">Failed to load playlist</div>';
+    }
+}
+
+// ── Search ────────────────────────────────────────────────────
+
+async function runSpotifySearch(q) {
+    sp.breadcrumb = [{ label: `"${q}"`, action: () => runSpotifySearch(q) }];
+    renderSpBreadcrumb();
+    spSetLoading();
+
+    const scope = document.querySelector('[name="sp-search-scope"]:checked')?.value || 'library';
+    const rows  = [];
+
+    if (scope === 'library') {
+        try {
+            const arRes = await fetch(`/api/spotify/pins/artists`);
+            const artistData = await arRes.json();
+            const filtered = (artistData.artists || []).filter(a =>
+                a.name.toLowerCase().includes(q.toLowerCase())
+            );
+            if (filtered.length) {
+                rows.push('<div class="sp-result-section-header">Artists</div>');
+                filtered.forEach(a => rows.push(renderSpArtistRow(a, true)));
+            }
+            if (!rows.length) {
+                rows.push('<div class="loading-row muted-row">No pinned results for "' + escHtml(q) + '"</div>');
+            }
+        } catch (err) {
+            rows.push('<div class="loading-row error-row">Search error</div>');
+        }
+    } else {
+        try {
+            const res  = await fetch(`/api/spotify/search?q=${encodeURIComponent(q)}&types=artist,album,track`);
+            const data = await res.json();
+
+            if (data.artists?.length) {
+                rows.push('<div class="sp-result-section-header">Artists</div>');
+                for (const a of data.artists) {
+                    const pinRes  = await fetch(`/api/spotify/pin/check/${encodeURIComponent(a.id)}`);
+                    const pinData = await pinRes.json();
+                    rows.push(renderSpArtistRow({...a, spotify_id: a.id}, pinData.pinned));
+                }
+            }
+            if (data.albums?.length) {
+                rows.push('<div class="sp-result-section-header">Albums</div>');
+                for (const al of data.albums) {
+                    const pinRes  = await fetch(`/api/spotify/pin/check/${encodeURIComponent(al.id)}`);
+                    const pinData = await pinRes.json();
+                    rows.push(renderSpAlbumRow({...al, spotify_id: al.id}, pinData.pinned));
+                }
+            }
+            if (data.tracks?.length) {
+                rows.push('<div class="sp-result-section-header">Tracks</div>');
+                for (const t of data.tracks) {
+                    const pinRes  = await fetch(`/api/spotify/pin/check/${encodeURIComponent(t.id)}`);
+                    const pinData = await pinRes.json();
+                    rows.push(renderSpTrackRow({...t, spotify_id: t.id}, pinData.pinned));
+                }
+            }
+            if (!rows.length) {
+                rows.push('<div class="loading-row muted-row">No results for "' + escHtml(q) + '"</div>');
+            }
+        } catch (err) {
+            rows.push('<div class="loading-row error-row">Search error</div>');
+        }
+    }
+
+    spShowList(rows);
+}
+
+function exitSpotifySearch() {
+    sp.breadcrumb = [];
+    if (sp.view === 'artists')   loadSpotifyArtists();
+    else                          loadSpotifyPlaylists();
+}
+
+// ── Event delegation for dynamic list rows ────────────────────
+
+function attachSpListeners() {
+    const list = document.getElementById('sp-file-list');
+    if (!list) return;
+
+    list.querySelectorAll('.sp-artist-link').forEach(el => {
+        el.addEventListener('click', e => {
+            e.preventDefault();
+            const id   = el.dataset.id;
+            const name = el.dataset.name;
+            sp.breadcrumb = [{ label: name, action: () => loadSpotifyAlbumsForArtist(id, name) }];
+            loadSpotifyAlbumsForArtist(id, name);
+        });
+    });
+
+    list.querySelectorAll('.sp-album-link').forEach(el => {
+        el.addEventListener('click', e => {
+            e.preventDefault();
+            const albumId    = el.dataset.id;
+            const albumName  = el.dataset.name;
+            const artistId   = el.dataset.artistId;
+            const artistName = el.dataset.artistName;
+            const existing = sp.breadcrumb.filter(c => c.label === artistName);
+            if (!existing.length) {
+                sp.breadcrumb = [
+                    { label: artistName, action: () => loadSpotifyAlbumsForArtist(artistId, artistName) },
+                    { label: albumName,  action: () => loadSpotifyTracksForAlbum(albumId, albumName, artistId, artistName) },
+                ];
+            } else {
+                sp.breadcrumb = [
+                    ...sp.breadcrumb.slice(0, sp.breadcrumb.findIndex(c => c.label === artistName) + 1),
+                    { label: albumName, action: () => loadSpotifyTracksForAlbum(albumId, albumName, artistId, artistName) },
+                ];
+            }
+            renderSpBreadcrumb();
+            loadSpotifyTracksForAlbum(albumId, albumName, artistId, artistName);
+        });
+    });
+
+    list.querySelectorAll('.sp-playlist-link').forEach(el => {
+        el.addEventListener('click', e => {
+            e.preventDefault();
+            loadSpotifyPlaylistTracks(el.dataset.id, el.dataset.name);
+        });
+    });
+
+    list.querySelectorAll('[data-action="pin"]').forEach(btn => {
+        btn.addEventListener('click', () => toggleSpotifyPin(btn));
+    });
+
+    list.querySelectorAll('.sp-play-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (window.spotifyPlay) {
+                spotifyPlay(btn.dataset.mode, btn.dataset.context, btn.dataset.id, btn.dataset.uri, btn.dataset.name);
+            } else {
+                console.log('[Phase 3] Spotify play:', btn.dataset);
+            }
+        });
+    });
+
+    list.querySelectorAll('.sp-play-all-sonos-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (window.spotifyPlay) {
+                spotifyPlay('sonos', btn.dataset.context || 'album', btn.dataset.id, null, btn.dataset.name);
+            }
+        });
+    });
+
+    list.querySelectorAll('.sp-play-all-browser-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (window.spotifyPlay) {
+                spotifyPlay('browser', btn.dataset.context || 'album', btn.dataset.id, null, btn.dataset.name);
+            }
+        });
+    });
+
+    list.querySelectorAll('.sp-track-row').forEach(row => {
+        row.addEventListener('click', (e) => {
+            if (e.target.closest('.file-actions, .sp-pin-btn')) return;
+            const sonosBtn = row.querySelector('[data-context="track"][data-mode="sonos"]');
+            if (sonosBtn) sonosBtn.click();
+        });
+    });
+}
+
+// ── Pin / Unpin ───────────────────────────────────────────────
+
+async function toggleSpotifyPin(btn) {
+    const id      = btn.dataset.id;
+    const isPinned = btn.classList.contains('pinned');
+
+    if (isPinned) {
+        await fetch(`/api/spotify/pin/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        btn.textContent = btn.dataset.type === 'track' ? '+' : '+ Pin';
+        btn.classList.remove('pinned');
+        showToast('Unpinned', 'success');
+    } else {
+        const body = {
+            item_type:    btn.dataset.type,
+            spotify_id:   id,
+            name:         btn.dataset.name,
+            artist_id:    btn.dataset.artistId   || null,
+            artist_name:  btn.dataset.artistName  || null,
+            album_id:     btn.dataset.albumId     || null,
+            album_name:   btn.dataset.albumName   || null,
+            track_number: btn.dataset.trackNum ? Number(btn.dataset.trackNum) : null,
+            disc_number:  btn.dataset.discNum  ? Number(btn.dataset.discNum)  : 1,
+            duration_ms:  btn.dataset.duration ? Number(btn.dataset.duration) : null,
+            image_url:    btn.dataset.image    || null,
+        };
+        const res  = await fetch('/api/spotify/pin', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (data.status === 'pinned') {
+            btn.textContent = btn.dataset.type === 'track' ? '📌' : '📌 Pinned';
+            btn.classList.add('pinned');
+    const msg = btn.dataset.type === 'album'
+        ? `Album pinned (${data.tracks_added} tracks added)`
+        : `${btn.dataset.type.charAt(0).toUpperCase() + btn.dataset.type.slice(1)} pinned`;
+        showToast(msg, 'success');
+    }
+}
+}
+
+/* ============================================================
+   SPOTIFY — Phase 3: Full Playback Engine
+   ============================================================ */
+
+// ── Spotify Web Playback SDK state ───────────────────────────
+const spotifySdk = {
+    player:    null,
+    deviceId:  null,
+    ready:     false,
+    initAttempted: false,
+};
+
+window.onSpotifyWebPlaybackSDKReady = () => {
+    console.log('[Spotify SDK] Ready');
+    spotifySdk.sdkLoaded = true;
+};
+
+async function initSpotifySdkPlayer() {
+    if (spotifySdk.initAttempted) return;
+    spotifySdk.initAttempted = true;
+
+    if (!window.Spotify) {
+        console.warn('[Spotify SDK] SDK not loaded yet');
+        return;
+    }
+
+    let token;
+    try {
+        const res = await fetch('/api/spotify/token');
+        const data = await res.json();
+        token = data.access_token;
+    } catch (e) {
+        console.error('[Spotify SDK] Failed to get token:', e);
+        return;
+    }
+    if (!token) return;
+
+    spotifySdk.player = new window.Spotify.Player({
+        name: 'SonosWeb',
+        getOAuthToken: async (cb) => {
+            const r    = await fetch('/api/spotify/token');
+            const data = await r.json();
+            cb(data.access_token || token);
+        },
+        volume: 0.8,
+    });
+
+    spotifySdk.player.addListener('ready', ({ device_id }) => {
+        console.log('[Spotify SDK] Player ready, device_id:', device_id);
+        spotifySdk.deviceId = device_id;
+        spotifySdk.ready    = true;
+    });
+
+    spotifySdk.player.addListener('not_ready', ({ device_id }) => {
+        console.warn('[Spotify SDK] Device not ready:', device_id);
+        spotifySdk.ready = false;
+    });
+
+    spotifySdk.player.addListener('player_state_changed', (state) => {
+        if (!state) return;
+        const track    = state.track_window?.current_track;
+        const isPaused = state.paused;
+        if (track && playback.mode === 'spotify-browser') {
+            const title = `${track.name} — ${track.artists?.map(a=>a.name).join(', ')}`;
+            updateNowPlaying(title, 'spotify-browser');
+            setPlayPauseBtn(!isPaused);
+        }
+    });
+
+    spotifySdk.player.addListener('initialization_error', ({ message }) => {
+        console.error('[Spotify SDK] Init error:', message);
+    });
+    spotifySdk.player.addListener('authentication_error', ({ message }) => {
+        console.error('[Spotify SDK] Auth error:', message);
+        showToast('Spotify auth error — try reconnecting in Settings', 'error');
+    });
+    spotifySdk.player.addListener('account_error', ({ message }) => {
+        console.warn('[Spotify SDK] Account error (likely non-Premium):', message);
+        spotifySdk.ready = false;
+        showToast('Spotify browser playback requires Premium. Use ▶ Sonos instead.', 'error');
+    });
+
+    const connected = await spotifySdk.player.connect();
+    if (!connected) {
+        console.warn('[Spotify SDK] Player failed to connect');
+        spotifySdk.initAttempted = false;
+    }
+}
+
+// ── Main Spotify play dispatcher ─────────────────────────────
+
+window.spotifyPlay = async function(mode, context, id, uri, name) {
+    if (mode === 'browser') {
+        await spotifyPlayBrowser(context, id, uri, name);
+    } else {
+        await spotifyPlaySonos(context, id, uri, name);
+    }
+};
+
+// ── Play on Sonos ─────────────────────────────────────────────
+
+async function spotifyPlaySonos(context, id, uri, name) {
+    if (typeof audioEl !== 'undefined' && audioEl) {
+        audioEl.pause();
+        audioEl.removeAttribute('src');
+    }
+    if (typeof spotifySdk.player !== 'undefined' && spotifySdk.player && playback.mode === 'spotify-browser') {
+        spotifySdk.player.pause();
+    }
+    stopSonosPoller();
+
+    if (context === 'track') {
+        const spotifyUri = uri || `spotify:track:${id}`;
+        try {
+            const res  = await fetch('/api/sonos/play-spotify-track', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ spotify_uri: spotifyUri, name: name || id }),
+            });
+            const data = await res.json();
+            if (data.status === 'error') {
+                showToast('Sonos Spotify error: ' + data.message, 'error');
+                return;
+            }
+            playback.isPaused = false;
+            updateNowPlaying(name || id, 'spotify-sonos');
+            setPlayPauseBtn(true);
+            startSpotifySonosPoller();
+            showToast(`Playing on Sonos: ${name}`, 'success');
+        } catch (err) {
+            showToast('Sonos Spotify play failed: ' + err.message, 'error');
+        }
+
+    } else if (context === 'album') {
+        showToast('Loading album into Sonos queue…', 'success');
+        try {
+            let tracks = [];
+            const pinnedRes = await fetch(`/api/spotify/pins/tracks/${encodeURIComponent(id)}`);
+            const pinnedData = await pinnedRes.json();
+            tracks = pinnedData.tracks || [];
+
+            if (!tracks.length) {
+                const liveRes  = await fetch(`/api/spotify/album/${encodeURIComponent(id)}/tracks`);
+                const liveData = await liveRes.json();
+                tracks = (liveData.tracks || []).map(t => ({ ...t, spotify_id: t.id }));
+            }
+
+            const trackUris = tracks.map(t => `spotify:track:${t.spotify_id || t.id}`);
+            const names     = tracks.map(t => t.name);
+            const res  = await fetch('/api/sonos/play-spotify-album', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ track_uris: trackUris, names, album_name: name }),
+            });
+            const data = await res.json();
+            if (data.status === 'error') {
+                showToast('Sonos queue error: ' + data.message, 'error');
+                return;
+            }
+            playback.isPaused = false;
+            playback.sonosQueue = (data.titles || []).map((title, i) => ({
+                title,
+                uri: data.uris && data.uris[i] ? data.uris[i] : null,
+            }));
+            updateNowPlaying(data.first_title || name, 'spotify-sonos');
+            setPlayPauseBtn(true);
+            startSpotifySonosPoller();
+            showToast(`${data.track_count} tracks queued on Sonos`, 'success');
+        } catch (err) {
+            showToast('Failed to queue album: ' + err.message, 'error');
+        }
+
+    } else if (context === 'artist') {
+        showToast('Loading artist tracks into Sonos queue…', 'success');
+        try {
+            const albumsRes  = await fetch(`/api/spotify/pins/albums/${encodeURIComponent(id)}`);
+            const albumsData = await albumsRes.json();
+            const albums = albumsData.albums || [];
+            const allTracks = [];
+            for (const al of albums) {
+                const tracksRes  = await fetch(`/api/spotify/pins/tracks/${encodeURIComponent(al.spotify_id)}`);
+                const tracksData = await tracksRes.json();
+                allTracks.push(...(tracksData.tracks || []));
+            }
+            if (!allTracks.length) {
+                showToast('No pinned tracks for this artist. Pin some albums first.', 'error');
+                return;
+            }
+            const trackUris = allTracks.map(t => `spotify:track:${t.spotify_id}`);
+            const names     = allTracks.map(t => t.name);
+            const res = await fetch('/api/sonos/play-spotify-album', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ track_uris: trackUris, names, album_name: name }),
+            });
+            const data = await res.json();
+            playback.isPaused = false;
+            playback.sonosQueue = (data.titles || []).map((title, i) => ({
+                title,
+                uri: data.uris && data.uris[i] ? data.uris[i] : null,
+            }));
+            updateNowPlaying(data.first_title || name, 'spotify-sonos');
+            setPlayPauseBtn(true);
+            startSpotifySonosPoller();
+            showToast(`${data.track_count} tracks queued on Sonos`, 'success');
+        } catch (err) {
+            showToast('Failed to queue artist: ' + err.message, 'error');
+        }
+
+    } else if (context === 'playlist') {
+        showToast('Loading playlist into Sonos queue…', 'success');
+        try {
+            const res    = await fetch(`/api/spotify/playlist/${encodeURIComponent(id)}/tracks`);
+            const data   = await res.json();
+            const tracks = data.tracks || [];
+            if (!tracks.length) { showToast('Playlist is empty', 'error'); return; }
+            const trackUris = tracks.map(t => `spotify:track:${t.id}`);
+            const names     = tracks.map(t => t.name);
+            const qRes = await fetch('/api/sonos/play-spotify-album', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ track_uris: trackUris, names, album_name: name }),
+            });
+            const qData = await qRes.json();
+            playback.isPaused = false;
+            playback.sonosQueue = (qData.titles || []).map((title, i) => ({
+                title,
+                uri: qData.uris && qData.uris[i] ? qData.uris[i] : null,
+            }));
+            updateNowPlaying(qData.first_title || name, 'spotify-sonos');
+            setPlayPauseBtn(true);
+            startSpotifySonosPoller();
+            showToast(`${qData.track_count} tracks queued on Sonos`, 'success');
+        } catch (err) {
+            showToast('Failed to queue playlist: ' + err.message, 'error');
+        }
+    }
+}
+
+// ── Play in browser (Spotify Web Playback SDK) ────────────────
+
+async function spotifyPlayBrowser(context, id, uri, name) {
+    if (!spotifySdk.ready) {
+        await initSpotifySdkPlayer();
+        await new Promise(resolve => setTimeout(resolve, 1500));
+    }
+
+    if (!spotifySdk.ready || !spotifySdk.deviceId) {
+        showToast('Spotify browser playback unavailable. Premium required. Try ▶ Sonos instead.', 'error');
+        return;
+    }
+
+    if (typeof audioEl !== 'undefined' && audioEl) { audioEl.pause(); audioEl.removeAttribute('src'); }
+    stopSonosPoller();
+
+    let uris = [];
+    let displayName = name || id;
+
+    if (context === 'track') {
+        uris = [uri || `spotify:track:${id}`];
+    } else if (context === 'album') {
+        const pinnedRes  = await fetch(`/api/spotify/pins/tracks/${encodeURIComponent(id)}`);
+        const pinnedData = await pinnedRes.json();
+        let tracks = pinnedData.tracks || [];
+        if (!tracks.length) {
+            const liveRes  = await fetch(`/api/spotify/album/${encodeURIComponent(id)}/tracks`);
+            const liveData = await liveRes.json();
+            tracks = liveData.tracks || [];
+        }
+        uris = tracks.map(t => `spotify:track:${t.spotify_id || t.id}`);
+        displayName = tracks[0]?.name ? `${tracks[0].name} (${name})` : name;
+    } else if (context === 'artist') {
+        const albumsRes  = await fetch(`/api/spotify/pins/albums/${encodeURIComponent(id)}`);
+        const albumsData = await albumsRes.json();
+        const firstAlbum = (albumsData.albums || [])[0];
+        if (firstAlbum) {
+            const tracksRes  = await fetch(`/api/spotify/pins/tracks/${encodeURIComponent(firstAlbum.spotify_id)}`);
+            const tracksData = await tracksRes.json();
+            uris = (tracksData.tracks || []).map(t => `spotify:track:${t.spotify_id}`);
+        }
+    } else if (context === 'playlist') {
+        const res  = await fetch(`/api/spotify/playlist/${encodeURIComponent(id)}/tracks`);
+        const data = await res.json();
+        uris = (data.tracks || []).map(t => `spotify:track:${t.id}`);
+    }
+
+    if (!uris.length) {
+        showToast('No tracks to play', 'error');
+        return;
+    }
+
+    try {
+        const res  = await fetch('/api/spotify/player/play-tracks', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ uris, device_id: spotifySdk.deviceId }),
+        });
+        const data = await res.json();
+        if (data.error) {
+            showToast('Spotify play error: ' + data.error, 'error');
+            return;
+        }
+        playback.isPaused = false;
+        updateNowPlaying(displayName, 'spotify-browser');
+        setPlayPauseBtn(true);
+        showToast(`Playing in browser: ${displayName}`, 'success');
+    } catch (err) {
+        showToast('Spotify browser play failed: ' + err.message, 'error');
+    }
+}
+
+// ── Extend Phase 4 controls bar handlers ─────────────────────
+
+function onPlayPause() {
+    if (playback.mode === 'spotify-browser') {
+        if (!spotifySdk.player) return;
+        spotifySdk.player.togglePlay();
+    } else if (playback.mode === 'spotify-sonos') {
+        if (playback.isPaused) {
+            fetch('/api/spotify/player/resume', { method: 'POST' });
+            fetch('/api/sonos/resume', { method: 'POST' });
+            playback.isPaused = false;
+            setPlayPauseBtn(true);
+        } else {
+            fetch('/api/spotify/player/pause', { method: 'POST' });
+            fetch('/api/sonos/pause', { method: 'POST' });
+            playback.isPaused = true;
+            setPlayPauseBtn(false);
+        }
+    } else if (playback.mode === 'browser') {
+        if (!audioEl) return;
+        if (audioEl.paused) {
+            audioEl.play();
+        } else {
+            audioEl.pause();
+        }
+    } else if (playback.mode === 'sonos') {
+        if (playback.isPaused) {
+            fetch('/api/sonos/resume', { method: 'POST' }).then(() => {
+                playback.isPaused = false;
+                setPlayPauseBtn(true);
+            });
+        } else {
+            fetch('/api/sonos/pause', { method: 'POST' }).then(() => {
+                playback.isPaused = true;
+                setPlayPauseBtn(false);
+            });
+        }
+    }
+}
+
+function onNext() {
+    if (playback.mode === 'spotify-browser') {
+        spotifySdk.player?.nextTrack();
+    } else if (playback.mode === 'spotify-sonos') {
+        fetch('/api/sonos/next', { method: 'POST' })
+            .then(() => setTimeout(syncSpotifySonosState, 600));
+    } else if (playback.mode === 'browser') {
+        advanceBrowserPlaylist(1);
+    } else if (playback.mode === 'sonos') {
+        fetch('/api/sonos/next', { method: 'POST' })
+            .then(r => r.json())
+            .then(() => setTimeout(syncSonosState, 500));
+    }
+}
+
+function onPrev() {
+    if (playback.mode === 'spotify-browser') {
+        spotifySdk.player?.previousTrack();
+    } else if (playback.mode === 'spotify-sonos') {
+        fetch('/api/sonos/previous', { method: 'POST' })
+            .then(() => setTimeout(syncSpotifySonosState, 600));
+    } else if (playback.mode === 'browser') {
+        advanceBrowserPlaylist(-1);
+    } else if (playback.mode === 'sonos') {
+        fetch('/api/sonos/previous', { method: 'POST' })
+            .then(r => r.json())
+            .then(() => setTimeout(syncSonosState, 500));
+    }
+}
+
+// ── Spotify-on-Sonos state polling ───────────────────────────
+
+let _spotifySonosPoller = null;
+
+function startSpotifySonosPoller() {
+    if (_spotifySonosPoller) clearInterval(_spotifySonosPoller);
+    syncSpotifySonosState();
+    _spotifySonosPoller = setInterval(syncSpotifySonosState, 3000);
+}
+
+function stopSpotifySonosPoller() {
+    if (_spotifySonosPoller) { clearInterval(_spotifySonosPoller); _spotifySonosPoller = null; }
+}
+
+async function syncSpotifySonosState() {
+    if (playback.mode !== 'spotify-sonos') { stopSpotifySonosPoller(); return; }
+    try {
+        const res  = await fetch('/api/sonos/state');
+        const data = await res.json();
+        const sonosTitle = data.title || '';
+        const sonosUri   = data.uri || '';
+        const tracknum   = data.tracknum || '';
+        const isPlaying  = data.state === 'PLAYING';
+        const isStopped  = data.state === 'STOPPED' || data.state === 'NO_MEDIA_PRESENT';
+
+        let title = sonosTitle;
+
+        if (playback.sonosQueue.length > 0) {
+            if (sonosUri) {
+                const uriIdx = playback.sonosQueue.findIndex(q => q.uri && sonosUri.includes(q.uri));
+                if (uriIdx !== -1) {
+                    title = playback.sonosQueue[uriIdx].title;
+                }
+            }
+            if (!title && tracknum) {
+                const idx = parseInt(tracknum, 10) - 1;
+                if (idx >= 0 && idx < playback.sonosQueue.length) {
+                    title = playback.sonosQueue[idx].title;
+                }
+            }
+        } else if (!sonosTitle) {
+            title = playback.currentTitle;
+        }
+
+        if (title && title !== playback.currentTitle) {
+            updateNowPlaying(title, 'spotify-sonos');
+        }
+        playback.isPaused = (data.state === 'PAUSED_PLAYBACK');
+        setPlayPauseBtn(isPlaying);
+        if (data.volume !== undefined && data.volume !== playback.volume) {
+            setVolumeUI(data.volume);
+        }
+        if (isStopped) {
+            stopSpotifySonosPoller();
+        }
+    } catch (err) {
+    }
+}
+
+// ── Mode badge display for Spotify modes ─────────────────────
+(function patchSpotifyModeBadge() {
+    const _origUpdate = typeof updateNowPlaying === 'function' ? updateNowPlaying : () => {};
+    const _alreadyPatched = window._patchedUpdateNowPlaying;
+
+    const newPatch = function(title, mode) {
+        (_alreadyPatched || _origUpdate)(title, mode);
+
+        const badge = document.getElementById('now-playing-mode');
+        if (badge) {
+            if (mode === 'spotify-browser') {
+                badge.textContent = 'Spotify';
+                badge.className   = 'mode-badge spotify-browser-badge';
+            } else if (mode === 'spotify-sonos') {
+                badge.textContent = 'Spotify → Sonos';
+                badge.className   = 'mode-badge spotify-sonos-badge';
+            }
+        }
+
+        const epBadge = document.getElementById('ep-mode-badge');
+        if (epBadge) {
+            if (mode === 'spotify-browser') {
+                epBadge.textContent = 'Spotify';
+                epBadge.className   = 'ep-mode-badge spotify-browser-badge';
+            } else if (mode === 'spotify-sonos') {
+                epBadge.textContent = 'Spotify → Sonos';
+                epBadge.className   = 'ep-mode-badge spotify-sonos-badge';
+            }
+        }
+    };
+    window._patchedUpdateNowPlaying = newPatch;
+    window.updateNowPlaying = newPatch;
+})();
