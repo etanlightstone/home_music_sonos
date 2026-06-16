@@ -4,9 +4,12 @@ All methods are synchronous — call via asyncio.run_in_executor from async rout
 """
 
 import time
+import logging
 import requests
 from base64 import b64encode
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 try:
     import spotipy
@@ -313,12 +316,19 @@ def get_user_playlists() -> list[dict]:
 def get_playlist_tracks(playlist_id: str, offset: int = 0) -> list[dict]:
     sp = make_client()
     if not sp:
+        logger.warning("get_playlist_tracks: no spotify client (no valid token) for playlist %s", playlist_id)
         return []
     raw = sp.playlist_tracks(playlist_id, limit=50, offset=offset)
+    items = raw.get("items") or []
+    logger.info("get_playlist_tracks: playlist=%s offset=%d total_items_in_response=%d", playlist_id, offset, len(items))
     tracks = []
-    for item in (raw.get("items") or []):
+    for item in items:
         t = item.get("track")
-        if not t or t.get("is_local"):
+        if not t:
+            logger.debug("get_playlist_tracks: item has no track for playlist %s", playlist_id)
+            continue
+        if t.get("is_local"):
+            logger.debug("get_playlist_tracks: skipping local track '%s' in playlist %s", t.get("name"), playlist_id)
             continue
         tracks.append({
             "id":           t["id"],
@@ -333,6 +343,7 @@ def get_playlist_tracks(playlist_id: str, offset: int = 0) -> list[dict]:
             "duration_ms":  t.get("duration_ms"),
             "image_url":    _normalize_image((t.get("album") or {}).get("images", [])),
         })
+    logger.info("get_playlist_tracks: playlist=%s returning %d tracks", playlist_id, len(tracks))
     return tracks
 
 
