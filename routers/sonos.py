@@ -1,4 +1,5 @@
 import asyncio
+import soco
 from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Optional
@@ -124,6 +125,74 @@ async def set_volume(req: SetVolumeRequest):
     sonos_ip = _get_sonos_ip()
     loop     = asyncio.get_event_loop()
     return await loop.run_in_executor(None, sc.set_volume, sonos_ip, req.volume)
+
+
+# ── Diagnostics ────────────────────────────────────────────────
+
+@router.get("/debug")
+async def debug_sonos():
+    """Dump Sonos speaker info, group, and available music services."""
+    from soco import discover
+    sonos_ip = _get_sonos_ip()
+    info = {"target_ip": sonos_ip}
+
+    # Discover all speakers
+    try:
+        speakers = discover()
+        if speakers:
+            info["discovered"] = [
+                {"name": s.player_name, "ip": s.ip_address, "uid": s.uid}
+                for s in speakers
+            ]
+        else:
+            info["discovered"] = []
+    except Exception as exc:
+        info["discovered_error"] = str(exc)
+
+    # Detailed info for the target speaker
+    player = soco.SoCo(sonos_ip)
+    try:
+        info["player_name"] = player.player_name
+        info["uid"] = player.uid
+        info["ip"] = player.ip_address
+    except Exception as exc:
+        info["player_error"] = str(exc)
+
+    try:
+        group = player.group
+        if group is not None:
+            coord = group.coordinator
+            info["coordinator"] = {"name": coord.player_name, "ip": coord.ip_address, "uid": coord.uid}
+            info["group_members"] = [
+                {"name": m.player_name, "ip": m.ip_address}
+                for m in group.members
+            ]
+    except Exception as exc:
+        info["group_error"] = str(exc)
+
+    # List music services
+    try:
+        services = player.music_services
+        info["music_services"] = [
+            {"name": svc.name, "sid": svc.sid, "capabilities": svc.capabilities}
+            for svc in services
+        ]
+    except Exception as exc:
+        info["music_services_error"] = str(exc)
+
+    # Check if Spotify (sid=9) is linked
+    try:
+        spotify_svc = player.get_music_service(9)
+        info["spotify_service"] = {
+            "name": spotify_svc.name,
+            "auth": spotify_svc.authentication,
+            "policy": spotify_svc.policy,
+            "present": spotify_svc.present,
+        }
+    except Exception as exc:
+        info["spotify_service_error"] = str(exc)
+
+    return info
 
 
 # ── Spotify-on-Sonos playback ─────────────────────────────────

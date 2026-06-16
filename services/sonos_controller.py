@@ -104,6 +104,40 @@ def play_uri(sonos_ip: str, uri: str, title: str = "") -> dict:
 
 # ── Folder / queue playback ──────────────────────────────────
 
+def _log_speaker_info(player, label=""):
+    """Log speaker identity, group membership, and coordinator."""
+    prefix = f"[DEBUG {label}]" if label else "[DEBUG]"
+    try:
+        print(f"{prefix} player_name={player.player_name} uid={player.uid} ip={player.ip_address}")
+    except Exception as exc:
+        print(f"{prefix} could not read player name: {exc!r}")
+    try:
+        group = player.group
+        if group is not None:
+            members = ", ".join(f"{m.player_name} ({m.ip_address})" for m in group.members)
+            coord = group.coordinator
+            print(f"{prefix} group members={members}")
+            print(f"{prefix} coordinator={coord.player_name} ip={coord.ip_address}")
+        else:
+            print(f"{prefix} no group")
+    except Exception as exc:
+        print(f"{prefix} could not read group: {exc!r}")
+
+
+def _coordinator(ip: str) -> SoCo:
+    """Return the group coordinator for the speaker at ip, falling back to the speaker itself."""
+    player = _player(ip)
+    try:
+        group = player.group
+        if group is not None:
+            coord = group.coordinator
+            print(f"[DEBUG _coordinator] player={player.player_name} coordinator={coord.player_name} ({coord.ip_address})")
+            return coord
+    except Exception as exc:
+        print(f"[DEBUG _coordinator] could not get coordinator for {ip}: {exc!r}")
+    return player
+
+
 def play_queue(sonos_ip: str, uris: list, titles: list = None) -> dict:
     """
     Clear the Sonos queue, load all URIs, and start playing from track 1.
@@ -113,9 +147,10 @@ def play_queue(sonos_ip: str, uris: list, titles: list = None) -> dict:
     if not uris:
         return {"status": "error", "message": "No URIs provided"}
 
-    player = _player(sonos_ip)
+    player = _coordinator(sonos_ip)  # always target the coordinator for queue ops
 
-    print(f"[DEBUG play_queue] ip={sonos_ip} uri_count={len(uris)}")
+    print(f"[DEBUG play_queue] ip={sonos_ip} uri_count={len(uris)} using coordinator={player.player_name} ({player.ip_address})")
+    _log_speaker_info(player, "play_queue")
     for i, u in enumerate(uris):
         print(f"[DEBUG play_queue]   uri[{i}]={u} title={titles[i] if titles and i < len(titles) else 'N/A'}")
 
