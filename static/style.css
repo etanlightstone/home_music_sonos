@@ -104,11 +104,13 @@ a:hover { text-decoration: underline; }
 .ctrl-btn:hover { background: var(--bg-tertiary); border-color: var(--border-hover); }
 .playbar-info { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
 .now-playing-label {
-  font-size: 0.9rem;
+  font-size: 1.0rem;
   color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  border-left: 2px solid #505050;
+  padding-left: 8px;
 }
 .mode-badge {
   font-size: 0.7rem;
