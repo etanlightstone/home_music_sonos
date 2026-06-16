@@ -340,6 +340,8 @@
 
   </div>
 
+  <!-- Spotify Web Playback SDK placeholder (prevents AnthemError if SDK loads before app.js) -->
+  <script>window.onSpotifyWebPlaybackSDKReady=function(){}</script>
   <!-- Spotify Web Playback SDK (loaded async, initialized in app.js only when needed) -->
   <script src="https://sdk.scdn.co/spotify-player.js" async></script>
   <script src="/static/app.js"></script>
