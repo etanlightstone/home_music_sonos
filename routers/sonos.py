@@ -148,18 +148,22 @@ class PlaySpotifyAlbumOnSonosRequest(BaseModel):
 async def play_spotify_track_on_sonos(req: PlaySpotifyTrackOnSonosRequest):
     sonos_ip  = _get_sonos_ip()
     sonos_uri = _spotify_uri_to_sonos(req.spotify_uri)
+    title     = req.name or req.spotify_uri.split(":")[-1]
 
     print(f"[DEBUG play_spotify_track_on_sonos] spotify_uri={req.spotify_uri}")
     print(f"[DEBUG play_spotify_track_on_sonos] sonos_uri={sonos_uri}")
     print(f"[DEBUG play_spotify_track_on_sonos] sonos_ip={sonos_ip}")
-    print(f"[DEBUG play_spotify_track_on_sonos] title={req.name}")
+    print(f"[DEBUG play_spotify_track_on_sonos] title={title}")
 
+    # Use queue-based approach (add_uri_to_queue + play_from_queue) instead of
+    # play_uri(), because play_uri() uses SetAVTransportURI which doesn't
+    # transition from STOPPED for Spotify music-service URIs.
     loop   = asyncio.get_event_loop()
-    result = await loop.run_in_executor(None, sc.play_uri, sonos_ip, sonos_uri, req.name)
+    result = await loop.run_in_executor(None, sc.play_queue, sonos_ip, [sonos_uri], [title])
 
     print(f"[DEBUG play_spotify_track_on_sonos] result={result}")
 
-    return {**result, "spotify_uri": req.spotify_uri, "sonos_uri": sonos_uri, "title": req.name}
+    return {**result, "spotify_uri": req.spotify_uri, "sonos_uri": sonos_uri, "title": title}
 
 
 @router.post("/play-spotify-album")
