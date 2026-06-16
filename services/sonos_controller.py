@@ -28,19 +28,43 @@ def play_uri(sonos_ip: str, uri: str, title: str = "") -> dict:
     """
     player = _player(sonos_ip)
 
+    print(f"[DEBUG play_uri] ip={sonos_ip} uri={uri} title={title}")
+
+    # Log group / coordinator info
+    try:
+        group = player.group
+        if group is not None:
+            members = ", ".join(m.player_name for m in group.members)
+            print(f"[DEBUG play_uri] group={members} coordinator={group.coordinator.player_name}")
+        else:
+            print(f"[DEBUG play_uri] player={player.player_name} no group")
+    except Exception as exc:
+        print(f"[DEBUG play_uri] could not read group: {exc!r}")
+
     # Log transport state before the call
     try:
         before = player.get_current_transport_info()
-    except Exception:
+        print(f"[DEBUG play_uri] transport before: {before.get('current_transport_state', 'UNKNOWN')}")
+    except Exception as exc:
+        print(f"[DEBUG play_uri] could not read transport before: {exc!r}")
         before = {}
 
     try:
         player.play_uri(uri)
+        print(f"[DEBUG play_uri] play_uri() completed without exception")
 
         # Verify post-call transport state
         time.sleep(0.5)
         after = player.get_current_transport_info()
         state_after = after.get("current_transport_state", "UNKNOWN")
+        print(f"[DEBUG play_uri] transport after: {state_after}")
+
+        # Log current track info
+        try:
+            track = player.get_current_track_info()
+            print(f"[DEBUG play_uri] current track: title={track.get('title')} uri={track.get('uri')} artist={track.get('artist')}")
+        except Exception as exc:
+            print(f"[DEBUG play_uri] could not read track info: {exc!r}")
 
         result = {
             "status": "playing" if state_after == "PLAYING" else "unknown",
@@ -49,16 +73,21 @@ def play_uri(sonos_ip: str, uri: str, title: str = "") -> dict:
             "transport_before": before.get("current_transport_state", ""),
             "transport_after": state_after,
         }
+        print(f"[DEBUG play_uri] result={result}")
         return result
     except SoCoException as e:
+        print(f"[ERROR play_uri] SoCoException: {e!r}")
         # Some Sonos devices need a stop before a new URI is accepted
         try:
+            print(f"[DEBUG play_uri] retrying with stop() first")
             player.stop()
             time.sleep(0.3)
             player.play_uri(uri)
+            print(f"[DEBUG play_uri] retry play_uri() completed without exception")
             time.sleep(0.5)
             after = player.get_current_transport_info()
             state_after = after.get("current_transport_state", "UNKNOWN")
+            print(f"[DEBUG play_uri] transport after retry: {state_after}")
             return {
                 "status": "playing" if state_after == "PLAYING" else "unknown",
                 "uri": uri,
@@ -66,8 +95,10 @@ def play_uri(sonos_ip: str, uri: str, title: str = "") -> dict:
                 "transport_after": state_after,
             }
         except Exception as e2:
+            print(f"[ERROR play_uri] retry also failed: {e2!r}")
             return {"status": "error", "message": str(e2)}
     except Exception as e:
+        print(f"[ERROR play_uri] unexpected exception: {e!r}")
         return {"status": "error", "message": str(e)}
 
 
@@ -83,14 +114,39 @@ def play_queue(sonos_ip: str, uris: list, titles: list = None) -> dict:
         return {"status": "error", "message": "No URIs provided"}
 
     player = _player(sonos_ip)
+
+    print(f"[DEBUG play_queue] ip={sonos_ip} uri_count={len(uris)}")
+    for i, u in enumerate(uris):
+        print(f"[DEBUG play_queue]   uri[{i}]={u} title={titles[i] if titles and i < len(titles) else 'N/A'}")
+
     try:
         player.clear_queue()
+        print(f"[DEBUG play_queue] clear_queue() done")
+
         resolved_titles = []
         for i, uri in enumerate(uris):
             title = (titles[i] if titles and i < len(titles) else f"Track {i+1}")
             resolved_titles.append(title)
-            player.add_uri_to_queue(uri)
+            try:
+                player.add_uri_to_queue(uri)
+                print(f"[DEBUG play_queue] add_uri_to_queue[{i}] ok")
+            except Exception as exc:
+                print(f"[ERROR play_queue] add_uri_to_queue[{i}] failed: {exc!r}")
+                raise
+
         player.play_from_queue(0)
+        print(f"[DEBUG play_queue] play_from_queue(0) done")
+
+        # Verify transport state after
+        time.sleep(0.5)
+        try:
+            transport = player.get_current_transport_info()
+            track = player.get_current_track_info()
+            print(f"[DEBUG play_queue] transport state: {transport.get('current_transport_state', 'UNKNOWN')}")
+            print(f"[DEBUG play_queue] current track: title={track.get('title')} uri={track.get('uri')}")
+        except Exception as exc:
+            print(f"[DEBUG play_queue] could not verify state: {exc!r}")
+
         return {
             "status": "playing_queue",
             "track_count": len(uris),
@@ -99,6 +155,7 @@ def play_queue(sonos_ip: str, uris: list, titles: list = None) -> dict:
             "uris": uris,
         }
     except Exception as e:
+        print(f"[ERROR play_queue] exception: {e!r}")
         return {"status": "error", "message": str(e)}
 
 

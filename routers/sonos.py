@@ -148,8 +148,17 @@ class PlaySpotifyAlbumOnSonosRequest(BaseModel):
 async def play_spotify_track_on_sonos(req: PlaySpotifyTrackOnSonosRequest):
     sonos_ip  = _get_sonos_ip()
     sonos_uri = _spotify_uri_to_sonos(req.spotify_uri)
-    loop      = asyncio.get_event_loop()
-    result    = await loop.run_in_executor(None, sc.play_uri, sonos_ip, sonos_uri, req.name)
+
+    print(f"[DEBUG play_spotify_track_on_sonos] spotify_uri={req.spotify_uri}")
+    print(f"[DEBUG play_spotify_track_on_sonos] sonos_uri={sonos_uri}")
+    print(f"[DEBUG play_spotify_track_on_sonos] sonos_ip={sonos_ip}")
+    print(f"[DEBUG play_spotify_track_on_sonos] title={req.name}")
+
+    loop   = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, sc.play_uri, sonos_ip, sonos_uri, req.name)
+
+    print(f"[DEBUG play_spotify_track_on_sonos] result={result}")
+
     return {**result, "spotify_uri": req.spotify_uri, "sonos_uri": sonos_uri, "title": req.name}
 
 
