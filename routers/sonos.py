@@ -124,3 +124,49 @@ async def set_volume(req: SetVolumeRequest):
     sonos_ip = _get_sonos_ip()
     loop     = asyncio.get_event_loop()
     return await loop.run_in_executor(None, sc.set_volume, sonos_ip, req.volume)
+
+
+# ── Spotify-on-Sonos playback ─────────────────────────────────
+
+def _spotify_uri_to_sonos(spotify_track_uri: str) -> str:
+    track_id = spotify_track_uri.split(":")[-1]
+    return f"x-sonos-spotify:spotify%3atrack%3a{track_id}"
+
+
+class PlaySpotifyTrackOnSonosRequest(BaseModel):
+    spotify_uri: str
+    name:        str = ""
+
+
+class PlaySpotifyAlbumOnSonosRequest(BaseModel):
+    track_uris:  list[str]
+    names:       list[str]
+    album_name:  str = ""
+
+
+@router.post("/play-spotify-track")
+async def play_spotify_track_on_sonos(req: PlaySpotifyTrackOnSonosRequest):
+    sonos_ip  = _get_sonos_ip()
+    sonos_uri = _spotify_uri_to_sonos(req.spotify_uri)
+    loop      = asyncio.get_event_loop()
+    result    = await loop.run_in_executor(None, sc.play_uri, sonos_ip, sonos_uri, req.name)
+    return {**result, "spotify_uri": req.spotify_uri, "sonos_uri": sonos_uri, "title": req.name}
+
+
+@router.post("/play-spotify-album")
+async def play_spotify_album_on_sonos(req: PlaySpotifyAlbumOnSonosRequest):
+    if not req.track_uris:
+        return {"status": "error", "message": "No tracks provided"}
+
+    sonos_ip   = _get_sonos_ip()
+    sonos_uris = [_spotify_uri_to_sonos(u) for u in req.track_uris]
+    titles     = req.names if req.names else [f"Track {i+1}" for i in range(len(sonos_uris))]
+
+    loop   = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, sc.play_queue, sonos_ip, sonos_uris, titles)
+    return {
+        **result,
+        "album": req.album_name,
+        "track_count": len(sonos_uris),
+        "first_title": titles[0] if titles else "",
+    }

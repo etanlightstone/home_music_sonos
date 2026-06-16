@@ -1044,3 +1044,20 @@ a:hover { text-decoration: underline; }
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border);
 }
+
+/* ============================================================
+   SPOTIFY — Phase 3: Mode badges for Spotify playback modes
+   ============================================================ */
+
+.mode-badge.spotify-browser-badge,
+.ep-mode-badge.spotify-browser-badge {
+  background: rgba(29,185,84,0.2);
+  color: #1db954;
+}
+
+.mode-badge.spotify-sonos-badge,
+.ep-mode-badge.spotify-sonos-badge {
+  background: rgba(29,185,84,0.12);
+  color: #1db954;
+  font-size: 0.65rem;
+}

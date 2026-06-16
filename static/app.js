@@ -1811,10 +1811,424 @@ async function toggleSpotifyPin(btn) {
         if (data.status === 'pinned') {
             btn.textContent = btn.dataset.type === 'track' ? '📌' : '📌 Pinned';
             btn.classList.add('pinned');
-            const msg = btn.dataset.type === 'album'
-                ? `Album pinned (${data.tracks_added} tracks added)`
-                : `${btn.dataset.type.charAt(0).toUpperCase() + btn.dataset.type.slice(1)} pinned`;
-            showToast(msg, 'success');
+    const msg = btn.dataset.type === 'album'
+        ? `Album pinned (${data.tracks_added} tracks added)`
+        : `${btn.dataset.type.charAt(0).toUpperCase() + btn.dataset.type.slice(1)} pinned`;
+        showToast(msg, 'success');
+    }
+}
+
+/* ============================================================
+   SPOTIFY — Phase 3: Full Playback Engine
+   ============================================================ */
+
+// ── Spotify Web Playback SDK state ───────────────────────────
+const spotifySdk = {
+    player:    null,
+    deviceId:  null,
+    ready:     false,
+    initAttempted: false,
+};
+
+window.onSpotifyWebPlaybackSDKReady = () => {
+    console.log('[Spotify SDK] Ready');
+    spotifySdk.sdkLoaded = true;
+};
+
+async function initSpotifySdkPlayer() {
+    if (spotifySdk.initAttempted) return;
+    spotifySdk.initAttempted = true;
+
+    if (!window.Spotify) {
+        console.warn('[Spotify SDK] SDK not loaded yet');
+        return;
+    }
+
+    let token;
+    try {
+        const res = await fetch('/api/spotify/token');
+        const data = await res.json();
+        token = data.access_token;
+    } catch (e) {
+        console.error('[Spotify SDK] Failed to get token:', e);
+        return;
+    }
+    if (!token) return;
+
+    spotifySdk.player = new window.Spotify.Player({
+        name: 'SonosWeb',
+        getOAuthToken: async (cb) => {
+            const r    = await fetch('/api/spotify/token');
+            const data = await r.json();
+            cb(data.access_token || token);
+        },
+        volume: 0.8,
+    });
+
+    spotifySdk.player.addListener('ready', ({ device_id }) => {
+        console.log('[Spotify SDK] Player ready, device_id:', device_id);
+        spotifySdk.deviceId = device_id;
+        spotifySdk.ready    = true;
+    });
+
+    spotifySdk.player.addListener('not_ready', ({ device_id }) => {
+        console.warn('[Spotify SDK] Device not ready:', device_id);
+        spotifySdk.ready = false;
+    });
+
+    spotifySdk.player.addListener('player_state_changed', (state) => {
+        if (!state) return;
+        const track    = state.track_window?.current_track;
+        const isPaused = state.paused;
+        if (track && playback.mode === 'spotify-browser') {
+            const title = `${track.name} — ${track.artists?.map(a=>a.name).join(', ')}`;
+            updateNowPlaying(title, 'spotify-browser');
+            setPlayPauseBtn(!isPaused);
+        }
+    });
+
+    spotifySdk.player.addListener('initialization_error', ({ message }) => {
+        console.error('[Spotify SDK] Init error:', message);
+    });
+    spotifySdk.player.addListener('authentication_error', ({ message }) => {
+        console.error('[Spotify SDK] Auth error:', message);
+        showToast('Spotify auth error — try reconnecting in Settings', 'error');
+    });
+    spotifySdk.player.addListener('account_error', ({ message }) => {
+        console.warn('[Spotify SDK] Account error (likely non-Premium):', message);
+        spotifySdk.ready = false;
+        showToast('Spotify browser playback requires Premium. Use ▶ Sonos instead.', 'error');
+    });
+
+    const connected = await spotifySdk.player.connect();
+    if (!connected) {
+        console.warn('[Spotify SDK] Player failed to connect');
+        spotifySdk.initAttempted = false;
+    }
+}
+
+// ── Main Spotify play dispatcher ─────────────────────────────
+
+window.spotifyPlay = async function(mode, context, id, uri, name) {
+    if (mode === 'browser') {
+        await spotifyPlayBrowser(context, id, uri, name);
+    } else {
+        await spotifyPlaySonos(context, id, uri, name);
+    }
+};
+
+// ── Play on Sonos ─────────────────────────────────────────────
+
+async function spotifyPlaySonos(context, id, uri, name) {
+    if (typeof audioEl !== 'undefined' && audioEl) {
+        audioEl.pause();
+        audioEl.src = '';
+    }
+    if (typeof spotifySdk.player !== 'undefined' && spotifySdk.player && playback.mode === 'spotify-browser') {
+        spotifySdk.player.pause();
+    }
+    stopSonosPoller();
+
+    if (context === 'track') {
+        const spotifyUri = uri || `spotify:track:${id}`;
+        try {
+            const res  = await fetch('/api/sonos/play-spotify-track', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ spotify_uri: spotifyUri, name: name || id }),
+            });
+            const data = await res.json();
+            if (data.status === 'error') {
+                showToast('Sonos Spotify error: ' + data.message, 'error');
+                return;
+            }
+            playback.isPaused = false;
+            updateNowPlaying(name || id, 'spotify-sonos');
+            setPlayPauseBtn(true);
+            startSpotifySonosPoller();
+            showToast(`Playing on Sonos: ${name}`, 'success');
+        } catch (err) {
+            showToast('Sonos Spotify play failed: ' + err.message, 'error');
+        }
+
+    } else if (context === 'album') {
+        showToast('Loading album into Sonos queue…', 'success');
+        try {
+            let tracks = [];
+            const pinnedRes = await fetch(`/api/spotify/pins/tracks/${encodeURIComponent(id)}`);
+            const pinnedData = await pinnedRes.json();
+            tracks = pinnedData.tracks || [];
+
+            if (!tracks.length) {
+                const liveRes  = await fetch(`/api/spotify/album/${encodeURIComponent(id)}/tracks`);
+                const liveData = await liveRes.json();
+                tracks = (liveData.tracks || []).map(t => ({ ...t, spotify_id: t.id }));
+            }
+
+            const trackUris = tracks.map(t => `spotify:track:${t.spotify_id || t.id}`);
+            const names     = tracks.map(t => t.name);
+            const res  = await fetch('/api/sonos/play-spotify-album', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ track_uris: trackUris, names, album_name: name }),
+            });
+            const data = await res.json();
+            if (data.status === 'error') {
+                showToast('Sonos queue error: ' + data.message, 'error');
+                return;
+            }
+            playback.isPaused = false;
+            updateNowPlaying(data.first_title || name, 'spotify-sonos');
+            setPlayPauseBtn(true);
+            startSpotifySonosPoller();
+            showToast(`${data.track_count} tracks queued on Sonos`, 'success');
+        } catch (err) {
+            showToast('Failed to queue album: ' + err.message, 'error');
+        }
+
+    } else if (context === 'artist') {
+        showToast('Loading artist tracks into Sonos queue…', 'success');
+        try {
+            const albumsRes  = await fetch(`/api/spotify/pins/albums/${encodeURIComponent(id)}`);
+            const albumsData = await albumsRes.json();
+            const albums = albumsData.albums || [];
+            const allTracks = [];
+            for (const al of albums) {
+                const tracksRes  = await fetch(`/api/spotify/pins/tracks/${encodeURIComponent(al.spotify_id)}`);
+                const tracksData = await tracksRes.json();
+                allTracks.push(...(tracksData.tracks || []));
+            }
+            if (!allTracks.length) {
+                showToast('No pinned tracks for this artist. Pin some albums first.', 'error');
+                return;
+            }
+            const trackUris = allTracks.map(t => `spotify:track:${t.spotify_id}`);
+            const names     = allTracks.map(t => t.name);
+            const res = await fetch('/api/sonos/play-spotify-album', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ track_uris: trackUris, names, album_name: name }),
+            });
+            const data = await res.json();
+            playback.isPaused = false;
+            updateNowPlaying(data.first_title || name, 'spotify-sonos');
+            setPlayPauseBtn(true);
+            startSpotifySonosPoller();
+            showToast(`${data.track_count} tracks queued on Sonos`, 'success');
+        } catch (err) {
+            showToast('Failed to queue artist: ' + err.message, 'error');
+        }
+
+    } else if (context === 'playlist') {
+        showToast('Loading playlist into Sonos queue…', 'success');
+        try {
+            const res    = await fetch(`/api/spotify/playlist/${encodeURIComponent(id)}/tracks`);
+            const data   = await res.json();
+            const tracks = data.tracks || [];
+            if (!tracks.length) { showToast('Playlist is empty', 'error'); return; }
+            const trackUris = tracks.map(t => `spotify:track:${t.id}`);
+            const names     = tracks.map(t => t.name);
+            const qRes = await fetch('/api/sonos/play-spotify-album', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ track_uris: trackUris, names, album_name: name }),
+            });
+            const qData = await qRes.json();
+            playback.isPaused = false;
+            updateNowPlaying(qData.first_title || name, 'spotify-sonos');
+            setPlayPauseBtn(true);
+            startSpotifySonosPoller();
+            showToast(`${qData.track_count} tracks queued on Sonos`, 'success');
+        } catch (err) {
+            showToast('Failed to queue playlist: ' + err.message, 'error');
         }
     }
+}
+
+// ── Play in browser (Spotify Web Playback SDK) ────────────────
+
+async function spotifyPlayBrowser(context, id, uri, name) {
+    if (!spotifySdk.ready) {
+        await initSpotifySdkPlayer();
+        await new Promise(resolve => setTimeout(resolve, 1500));
+    }
+
+    if (!spotifySdk.ready || !spotifySdk.deviceId) {
+        showToast('Spotify browser playback unavailable. Premium required. Try ▶ Sonos instead.', 'error');
+        return;
+    }
+
+    if (typeof audioEl !== 'undefined' && audioEl) { audioEl.pause(); audioEl.src = ''; }
+    stopSonosPoller();
+
+    let uris = [];
+    let displayName = name || id;
+
+    if (context === 'track') {
+        uris = [uri || `spotify:track:${id}`];
+    } else if (context === 'album') {
+        const pinnedRes  = await fetch(`/api/spotify/pins/tracks/${encodeURIComponent(id)}`);
+        const pinnedData = await pinnedRes.json();
+        let tracks = pinnedData.tracks || [];
+        if (!tracks.length) {
+            const liveRes  = await fetch(`/api/spotify/album/${encodeURIComponent(id)}/tracks`);
+            const liveData = await liveRes.json();
+            tracks = liveData.tracks || [];
+        }
+        uris = tracks.map(t => `spotify:track:${t.spotify_id || t.id}`);
+        displayName = tracks[0]?.name ? `${tracks[0].name} (${name})` : name;
+    } else if (context === 'artist') {
+        const albumsRes  = await fetch(`/api/spotify/pins/albums/${encodeURIComponent(id)}`);
+        const albumsData = await albumsRes.json();
+        const firstAlbum = (albumsData.albums || [])[0];
+        if (firstAlbum) {
+            const tracksRes  = await fetch(`/api/spotify/pins/tracks/${encodeURIComponent(firstAlbum.spotify_id)}`);
+            const tracksData = await tracksRes.json();
+            uris = (tracksData.tracks || []).map(t => `spotify:track:${t.spotify_id}`);
+        }
+    } else if (context === 'playlist') {
+        const res  = await fetch(`/api/spotify/playlist/${encodeURIComponent(id)}/tracks`);
+        const data = await res.json();
+        uris = (data.tracks || []).map(t => `spotify:track:${t.id}`);
+    }
+
+    if (!uris.length) {
+        showToast('No tracks to play', 'error');
+        return;
+    }
+
+    try {
+        const res  = await fetch('/api/spotify/player/play-tracks', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ uris, device_id: spotifySdk.deviceId }),
+        });
+        const data = await res.json();
+        if (data.error) {
+            showToast('Spotify play error: ' + data.error, 'error');
+            return;
+        }
+        playback.isPaused = false;
+        updateNowPlaying(displayName, 'spotify-browser');
+        setPlayPauseBtn(true);
+        showToast(`Playing in browser: ${displayName}`, 'success');
+    } catch (err) {
+        showToast('Spotify browser play failed: ' + err.message, 'error');
+    }
+}
+
+// ── Extend Phase 4 controls bar handlers ─────────────────────
+
+const _p4_onPlayPause = typeof onPlayPause === 'function' ? onPlayPause : () => {};
+const _p4_onNext      = typeof onNext      === 'function' ? onNext      : () => {};
+const _p4_onPrev      = typeof onPrev      === 'function' ? onPrev      : () => {};
+
+function onPlayPause() {
+    if (playback.mode === 'spotify-browser') {
+        if (!spotifySdk.player) return;
+        spotifySdk.player.togglePlay();
+    } else if (playback.mode === 'spotify-sonos') {
+        if (playback.isPaused) {
+            fetch('/api/spotify/player/resume', { method: 'POST' });
+            fetch('/api/sonos/resume', { method: 'POST' });
+            playback.isPaused = false;
+            setPlayPauseBtn(true);
+        } else {
+            fetch('/api/spotify/player/pause', { method: 'POST' });
+            fetch('/api/sonos/pause', { method: 'POST' });
+            playback.isPaused = true;
+            setPlayPauseBtn(false);
+        }
+    } else {
+        _p4_onPlayPause();
+    }
+}
+
+function onNext() {
+    if (playback.mode === 'spotify-browser') {
+        spotifySdk.player?.nextTrack();
+    } else if (playback.mode === 'spotify-sonos') {
+        fetch('/api/sonos/next', { method: 'POST' })
+            .then(() => setTimeout(syncSpotifySonosState, 600));
+    } else {
+        _p4_onNext();
+    }
+}
+
+function onPrev() {
+    if (playback.mode === 'spotify-browser') {
+        spotifySdk.player?.previousTrack();
+    } else if (playback.mode === 'spotify-sonos') {
+        fetch('/api/sonos/previous', { method: 'POST' })
+            .then(() => setTimeout(syncSpotifySonosState, 600));
+    } else {
+        _p4_onPrev();
+    }
+}
+
+// ── Spotify-on-Sonos state polling ───────────────────────────
+
+let _spotifySonosPoller = null;
+
+function startSpotifySonosPoller() {
+    if (_spotifySonosPoller) clearInterval(_spotifySonosPoller);
+    syncSpotifySonosState();
+    _spotifySonosPoller = setInterval(syncSpotifySonosState, 3000);
+}
+
+function stopSpotifySonosPoller() {
+    if (_spotifySonosPoller) { clearInterval(_spotifySonosPoller); _spotifySonosPoller = null; }
+}
+
+async function syncSpotifySonosState() {
+    if (playback.mode !== 'spotify-sonos') { stopSpotifySonosPoller(); return; }
+    try {
+        const res  = await fetch('/api/sonos/state');
+        const data = await res.json();
+        const title = data.title || playback.currentTitle;
+        if (title && title !== playback.currentTitle) {
+            updateNowPlaying(title, 'spotify-sonos');
+        }
+        const isPlaying = data.state === 'PLAYING';
+        playback.isPaused = (data.state === 'PAUSED_PLAYBACK');
+        setPlayPauseBtn(isPlaying);
+        if (data.state === 'STOPPED' || data.state === 'NO_MEDIA_PRESENT') {
+            stopSpotifySonosPoller();
+        }
+    } catch (err) {
+    }
+}
+
+// ── Mode badge display for Spotify modes ─────────────────────
+(function patchSpotifyModeBadge() {
+    const _origUpdate = typeof updateNowPlaying === 'function' ? updateNowPlaying : () => {};
+    const _alreadyPatched = window._patchedUpdateNowPlaying;
+
+    const newPatch = function(title, mode) {
+        (_alreadyPatched || _origUpdate)(title, mode);
+
+        const badge = document.getElementById('now-playing-mode');
+        if (badge) {
+            if (mode === 'spotify-browser') {
+                badge.textContent = 'Spotify';
+                badge.className   = 'mode-badge spotify-browser-badge';
+            } else if (mode === 'spotify-sonos') {
+                badge.textContent = 'Spotify → Sonos';
+                badge.className   = 'mode-badge spotify-sonos-badge';
+            }
+        }
+
+        const epBadge = document.getElementById('ep-mode-badge');
+        if (epBadge) {
+            if (mode === 'spotify-browser') {
+                epBadge.textContent = 'Spotify';
+                epBadge.className   = 'ep-mode-badge spotify-browser-badge';
+            } else if (mode === 'spotify-sonos') {
+                epBadge.textContent = 'Spotify → Sonos';
+                epBadge.className   = 'ep-mode-badge spotify-sonos-badge';
+            }
+        }
+    };
+    window._patchedUpdateNowPlaying = newPatch;
+})();
 }
