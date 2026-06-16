@@ -323,11 +323,11 @@ def get_playlist_tracks(playlist_id: str, offset: int = 0) -> list[dict]:
     logger.info("get_playlist_tracks: playlist=%s offset=%d total_items_in_response=%d", playlist_id, offset, len(items))
     tracks = []
     for item in items:
-        t = item.get("track")
+        t = item.get("item")
         if not t:
-            logger.info("get_playlist_tracks: item keys=%s has_track=%s sample=%s", list(item.keys()), bool(item.get("track")), str(item)[:300])
+            logger.info("get_playlist_tracks: item keys=%s has_item=%s sample=%s", list(item.keys()), bool(item.get("item")), str(item)[:300])
             continue
-        if t.get("is_local"):
+        if item.get("is_local") or t.get("is_local"):
             logger.debug("get_playlist_tracks: skipping local track '%s' in playlist %s", t.get("name"), playlist_id)
             continue
         tracks.append({
