@@ -325,7 +325,7 @@ def get_playlist_tracks(playlist_id: str, offset: int = 0) -> list[dict]:
     for item in items:
         t = item.get("track")
         if not t:
-            logger.debug("get_playlist_tracks: item keys=%s has_track=%s sample=%s", list(item.keys()), bool(item.get("track")), str(item)[:200])
+            logger.info("get_playlist_tracks: item keys=%s has_track=%s sample=%s", list(item.keys()), bool(item.get("track")), str(item)[:300])
             continue
         if t.get("is_local"):
             logger.debug("get_playlist_tracks: skipping local track '%s' in playlist %s", t.get("name"), playlist_id)
