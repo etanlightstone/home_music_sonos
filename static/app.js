@@ -1418,7 +1418,7 @@ function renderSpTrackRow(t, isPinned) {
     const dur  = `<span class="sp-duration">${spFormatDuration(t.duration_ms)}</span>`;
     const pinLabel = isPinned ? '📌' : '+';
     return `
-    <div class="file-row file-row-music">
+    <div class="file-row file-row-music sp-track-row">
       ${num}
       <span class="file-name">${escHtml(t.name)}</span>
       ${dur}
@@ -1576,6 +1576,13 @@ async function loadSpotifyTracksForAlbum(albumId, albumName, artistId, artistNam
         if (!tracks.length) {
             rows.push('<div class="loading-row muted-row">No tracks found</div>');
         } else {
+            const playAllHtml = `
+            <div class="play-all-bar">
+                <span class="play-all-label">Play all</span>
+                <button class="btn-secondary sp-play-all-browser-btn" data-id="${escHtml(albumId)}" data-name="${escHtml(albumName)}" title="Queue whole album in browser">▶ Browser</button>
+                <button class="btn-primary sp-play-all-sonos-btn" data-id="${escHtml(albumId)}" data-name="${escHtml(albumName)}" title="Queue whole album on Sonos">▶ Sonos</button>
+            </div>`;
+            rows.push(playAllHtml);
             for (const t of tracks) {
                 const pinRes = await fetch(`/api/spotify/pin/check/${encodeURIComponent(t.spotify_id || t.id)}`);
                 const pinData = await pinRes.json();
@@ -1774,6 +1781,30 @@ function attachSpListeners() {
             } else {
                 console.log('[Phase 3] Spotify play:', btn.dataset);
             }
+        });
+    });
+
+    list.querySelectorAll('.sp-play-all-sonos-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (window.spotifyPlay) {
+                spotifyPlay('sonos', 'album', btn.dataset.id, null, btn.dataset.name);
+            }
+        });
+    });
+
+    list.querySelectorAll('.sp-play-all-browser-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (window.spotifyPlay) {
+                spotifyPlay('browser', 'album', btn.dataset.id, null, btn.dataset.name);
+            }
+        });
+    });
+
+    list.querySelectorAll('.sp-track-row').forEach(row => {
+        row.addEventListener('click', (e) => {
+            if (e.target.closest('.file-actions, .sp-pin-btn')) return;
+            const sonosBtn = row.querySelector('[data-context="track"][data-mode="sonos"]');
+            if (sonosBtn) sonosBtn.click();
         });
     });
 }
