@@ -128,9 +128,9 @@ async def set_volume(req: SetVolumeRequest):
 
 # ── Spotify-on-Sonos playback ─────────────────────────────────
 
-def _spotify_uri_to_sonos(spotify_track_uri: str) -> str:
+def _spotify_uri_to_sonos(spotify_track_uri: str, sid: int = 9, flags: int = 8224, sn: int = 7) -> str:
     track_id = spotify_track_uri.split(":")[-1]
-    return f"x-sonos-spotify:spotify%3atrack%3a{track_id}"
+    return f"x-sonos-spotify:spotify:track:{track_id}?sid={sid}&flags={flags}&sn={sn}"
 
 
 class PlaySpotifyTrackOnSonosRequest(BaseModel):

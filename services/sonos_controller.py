@@ -27,16 +27,44 @@ def play_uri(sonos_ip: str, uri: str, title: str = "") -> dict:
     uri must be an http:// URL reachable from the Sonos device.
     """
     player = _player(sonos_ip)
+
+    # Log transport state before the call
+    try:
+        before = player.get_current_transport_info()
+    except Exception:
+        before = {}
+
     try:
         player.play_uri(uri)
-        return {"status": "playing", "uri": uri, "title": title}
+
+        # Verify post-call transport state
+        time.sleep(0.5)
+        after = player.get_current_transport_info()
+        state_after = after.get("current_transport_state", "UNKNOWN")
+
+        result = {
+            "status": "playing" if state_after == "PLAYING" else "unknown",
+            "uri": uri,
+            "title": title,
+            "transport_before": before.get("current_transport_state", ""),
+            "transport_after": state_after,
+        }
+        return result
     except SoCoException as e:
         # Some Sonos devices need a stop before a new URI is accepted
         try:
             player.stop()
             time.sleep(0.3)
             player.play_uri(uri)
-            return {"status": "playing", "uri": uri, "title": title}
+            time.sleep(0.5)
+            after = player.get_current_transport_info()
+            state_after = after.get("current_transport_state", "UNKNOWN")
+            return {
+                "status": "playing" if state_after == "PLAYING" else "unknown",
+                "uri": uri,
+                "title": title,
+                "transport_after": state_after,
+            }
         except Exception as e2:
             return {"status": "error", "message": str(e2)}
     except Exception as e:
