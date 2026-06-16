@@ -721,7 +721,7 @@ function setVolumeUI(vol) {
 function onVolumeInput(e) {
     const vol = parseInt(e.target.value, 10);
     setVolumeUI(vol);
-    if (playback.mode === 'sonos') {
+    if (playback.mode === 'sonos' || playback.mode === 'spotify-sonos') {
         fetch('/api/sonos/set-volume', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -989,7 +989,7 @@ function openExpandedPlayer() {
     if (!expandedPlayer) return;
 
     syncEpTrackInfo();
-    if (playback.mode === 'sonos' && playback.volume !== undefined) {
+    if ((playback.mode === 'sonos' || playback.mode === 'spotify-sonos') && playback.volume !== undefined) {
         setVolumeUI(playback.volume);
     }
 
@@ -2214,6 +2214,9 @@ async function syncSpotifySonosState() {
         const isPlaying = data.state === 'PLAYING';
         playback.isPaused = (data.state === 'PAUSED_PLAYBACK');
         setPlayPauseBtn(isPlaying);
+        if (data.volume !== undefined && data.volume !== playback.volume) {
+            setVolumeUI(data.volume);
+        }
         if (data.state === 'STOPPED' || data.state === 'NO_MEDIA_PRESENT') {
             stopSpotifySonosPoller();
         }
