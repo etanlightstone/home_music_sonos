@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 try:
     import spotipy
+    from spotipy import SpotifyException
 except ImportError:
     raise ImportError("spotipy not installed. Run: pip install spotipy")
 
@@ -318,7 +319,11 @@ def get_playlist_tracks(playlist_id: str, offset: int = 0) -> list[dict]:
     if not sp:
         logger.warning("get_playlist_tracks: no spotify client (no valid token) for playlist %s", playlist_id)
         return []
-    raw = sp.playlist_tracks(playlist_id, limit=50, offset=offset)
+    try:
+        raw = sp.playlist_tracks(playlist_id, limit=50, offset=offset)
+    except SpotifyException as e:
+        logger.error("get_playlist_tracks: Spotify API error for playlist %s offset %d: status=%d detail=%s", playlist_id, offset, e.http_status, e)
+        return []
     items = raw.get("items") or []
     logger.info("get_playlist_tracks: playlist=%s offset=%d total_items_in_response=%d", playlist_id, offset, len(items))
     tracks = []
