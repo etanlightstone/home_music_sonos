@@ -1290,7 +1290,7 @@ function renderSpBreadcrumb() {
         else loadSpotifyPlaylists();
     }}];
 
-    let html = `<a href="#" class="crumb-link sp-crumb-0">Spotify</a>`;
+    let html = `<a href="#" class="crumb-link sp-crumb-0 crumb-home"><svg class="crumb-home-icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3L2 12h3v8h6v-6h2v6h6v-8h3L12 3z"/></svg> Spotify</a>`;
     sp.breadcrumb.forEach((c, i) => {
         html += `<span class="crumb-sep"> / </span>`;
         if (i < sp.breadcrumb.length - 1) {
