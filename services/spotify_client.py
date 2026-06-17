@@ -314,18 +314,19 @@ def get_user_playlists() -> list[dict]:
     ]
 
 
-def get_playlist_tracks(playlist_id: str, offset: int = 0) -> list[dict]:
+def get_playlist_tracks(playlist_id: str, offset: int = 0) -> dict:
     sp = make_client()
     if not sp:
         logger.warning("get_playlist_tracks: no spotify client (no valid token) for playlist %s", playlist_id)
-        return []
+        return {"tracks": [], "total": 0, "limit": 50, "offset": offset, "has_more": False}
     try:
         raw = sp.playlist_tracks(playlist_id, limit=50, offset=offset)
     except SpotifyException as e:
         logger.error("get_playlist_tracks: Spotify API error for playlist %s offset %d: status=%d detail=%s", playlist_id, offset, e.http_status, e)
-        return []
+        return {"tracks": [], "total": 0, "limit": 50, "offset": offset, "has_more": False}
     items = raw.get("items") or []
-    logger.info("get_playlist_tracks: playlist=%s offset=%d total_items_in_response=%d", playlist_id, offset, len(items))
+    total = raw.get("total", 0)
+    logger.info("get_playlist_tracks: playlist=%s offset=%d total=%d items_in_response=%d", playlist_id, offset, total, len(items))
     tracks = []
     for item in items:
         t = item.get("item")
@@ -348,8 +349,15 @@ def get_playlist_tracks(playlist_id: str, offset: int = 0) -> list[dict]:
             "duration_ms":  t.get("duration_ms"),
             "image_url":    _normalize_image((t.get("album") or {}).get("images", [])),
         })
-    logger.info("get_playlist_tracks: playlist=%s returning %d tracks", playlist_id, len(tracks))
-    return tracks
+    has_more = (offset + len(tracks)) < total
+    logger.info("get_playlist_tracks: playlist=%s returning %d tracks has_more=%s", playlist_id, len(tracks), has_more)
+    return {
+        "tracks": tracks,
+        "total": total,
+        "limit": 50,
+        "offset": offset,
+        "has_more": has_more,
+    }
 
 
 # ── Playback control API calls ───────────────────────────────
