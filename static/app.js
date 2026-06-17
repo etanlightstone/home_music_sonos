@@ -1223,6 +1223,10 @@ const sp = {
     searchScope: 'library',
     breadcrumb:  [],
     searchTimer: null,
+    spPlaylistId: null,
+    spPlaylistName: null,
+    spPlaylistOffset: 0,
+    spPlaylistTotal: 0,
 };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -1634,11 +1638,17 @@ async function loadSpotifyPlaylistTracks(playlistId, playlistName) {
     sp.breadcrumb = [{ label: playlistName, action: () => loadSpotifyPlaylistTracks(playlistId, playlistName) }];
     renderSpBreadcrumb();
     spSetLoading();
+    sp.spPlaylistId = playlistId;
+    sp.spPlaylistName = playlistName;
+    sp.spPlaylistOffset = 0;
+    sp.spPlaylistTotal = 0;
     try {
         const res  = await fetch(`/api/spotify/playlist/${encodeURIComponent(playlistId)}/tracks`);
         const data = await res.json();
         const tracks = data.tracks || [];
         const rows = [];
+        sp.spPlaylistTotal = data.total || 0;
+        sp.spPlaylistOffset = data.offset || 0;
         if (tracks.length) {
             rows.push(`
             <div class="play-all-bar">
@@ -1651,6 +1661,9 @@ async function loadSpotifyPlaylistTracks(playlistId, playlistName) {
                 const pinData = await pinRes.json();
                 rows.push(renderSpTrackRow({...t, spotify_id: t.id}, pinData.pinned));
             }
+            if (data.has_more) {
+                rows.push(`<button class="sp-show-all-btn" data-playlist-id="${escHtml(playlistId)}">Load more tracks (${data.total - (data.offset + tracks.length)} remaining)</button>`);
+            }
         } else {
             rows.push('<div class="loading-row muted-row">No tracks</div>');
         }
@@ -1658,6 +1671,42 @@ async function loadSpotifyPlaylistTracks(playlistId, playlistName) {
     } catch (err) {
         document.getElementById('sp-file-list').innerHTML =
             '<div class="loading-row error-row">Failed to load playlist</div>';
+    }
+}
+
+async function loadMorePlaylistTracks(playlistId) {
+    sp.spPlaylistOffset += 50;
+    const btn = document.querySelector('.sp-show-all-btn');
+    if (btn) {
+        btn.textContent = 'Loading…';
+        btn.disabled = true;
+    }
+    try {
+        const res  = await fetch(`/api/spotify/playlist/${encodeURIComponent(playlistId)}/tracks?offset=${sp.spPlaylistOffset}`);
+        const data = await res.json();
+        const tracks = data.tracks || [];
+        const list = document.getElementById('sp-file-list');
+        for (const t of tracks) {
+            const pinRes  = await fetch(`/api/spotify/pin/check/${encodeURIComponent(t.id)}`);
+            const pinData = await pinRes.json();
+            const row = renderSpTrackRow({...t, spotify_id: t.id}, pinData.pinned);
+            list.insertAdjacentHTML('beforeend', row);
+        }
+        sp.spPlaylistOffset = data.offset + tracks.length;
+        if (data.has_more) {
+            list.querySelector('.sp-show-all-btn')?.remove();
+            list.insertAdjacentHTML('beforeend', `<button class="sp-show-all-btn" data-playlist-id="${escHtml(playlistId)}">Load more tracks (${data.total - (data.offset + tracks.length)} remaining)</button>`);
+            attachSpListeners();
+        } else {
+            list.querySelector('.sp-show-all-btn')?.remove();
+            attachSpListeners();
+        }
+    } catch (err) {
+        const btn2 = document.querySelector('.sp-show-all-btn');
+        if (btn2) {
+            btn2.textContent = 'Load more tracks';
+            btn2.disabled = false;
+        }
     }
 }
 
@@ -1816,6 +1865,16 @@ function attachSpListeners() {
             if (e.target.closest('.file-actions, .sp-pin-btn')) return;
             const sonosBtn = row.querySelector('[data-context="track"][data-mode="sonos"]');
             if (sonosBtn) sonosBtn.click();
+        });
+    });
+
+    list.querySelectorAll('.sp-show-all-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (btn.disabled) return;
+            const playlistId = btn.dataset.playlistId;
+            if (playlistId) {
+                loadMorePlaylistTracks(playlistId);
+            }
         });
     });
 }

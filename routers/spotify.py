@@ -106,10 +106,17 @@ async def playlist_tracks(playlist_id: str, offset: int = Query(default=0)):
     if not _is_authenticated():
         return {"error": "not authenticated"}
     loop = asyncio.get_event_loop()
-    tracks = await loop.run_in_executor(
+    result = await loop.run_in_executor(
         None, sc.get_playlist_tracks, playlist_id, offset
     )
-    return {"playlist_id": playlist_id, "tracks": tracks, "offset": offset}
+    return {
+        "playlist_id": playlist_id,
+        "tracks": result["tracks"],
+        "total": result["total"],
+        "limit": result["limit"],
+        "offset": result["offset"],
+        "has_more": result["has_more"],
+    }
 
 
 # ── Playback control ─────────────────────────────────────────
